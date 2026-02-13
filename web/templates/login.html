@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanaa AI | Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0b0c15; color: #e2e8f0; font-family: system-ui, sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
+                Sanaa AI
+            </h1>
+            <p class="text-gray-400 text-sm">Operations Agent</p>
+        </div>
+
+        <div class="glass rounded-2xl p-8">
+            <h2 class="text-xl font-semibold mb-6 text-center">Sign In</h2>
+
+            {% if error %}
+            <div class="mb-4 p-3 rounded-lg bg-red-900/50 border border-red-700 text-red-300 text-sm text-center">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="/login" class="space-y-5">
+                <div>
+                    <label for="email" class="block text-sm text-gray-400 mb-1.5">Email</label>
+                    <input type="email" id="email" name="email" required autocomplete="email"
+                           class="w-full bg-gray-900/80 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                           placeholder="admin@ai.sanaa.co">
+                </div>
+                <div>
+                    <label for="password" class="block text-sm text-gray-400 mb-1.5">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password"
+                           class="w-full bg-gray-900/80 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                           placeholder="Enter password">
+                </div>
+                <button type="submit"
+                        class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 rounded-lg transition-all duration-200 shadow-lg shadow-blue-900/30">
+                    Sign In
+                </button>
+            </form>
+        </div>
+
+        <p class="text-center text-gray-600 text-xs mt-6">Sanaa AI v1.0 &middot; ai.sanaa.co</p>
+    </div>
+</body>
+</html>

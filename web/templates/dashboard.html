@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanaa AI | Operations Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.10/htmx.min.js"></script>
+    <style>
+        body { background-color: #0b0c15; color: #e2e8f0; font-family: system-ui, sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .stat-card { @apply p-4 rounded-xl glass; }
+    </style>
+</head>
+<body class="min-h-screen p-6">
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                Sanaa AI
+            </h1>
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-gray-400">
+                    {{ now.strftime('%Y-%m-%d %H:%M:%S UTC') }}
+                </span>
+                <span class="text-sm text-gray-500">|</span>
+                <span class="text-sm text-gray-400">{{ user.email }}</span>
+                <a href="/logout" class="text-sm text-red-400 hover:text-red-300 transition">Logout</a>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="stat-card">
+                <div class="text-gray-400 text-sm">CPU Load</div>
+                <div class="text-2xl font-bold {{ 'text-red-400' if health.cpu.status == 'critical' else 'text-green-400' }}">
+                    {{ health.cpu.percent }}%
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="text-gray-400 text-sm">Memory</div>
+                <div class="text-2xl font-bold {{ 'text-red-400' if health.memory.status == 'critical' else 'text-green-400' }}">
+                    {{ health.memory.percent }}%
+                </div>
+                <div class="text-xs text-gray-500">{{ health.memory.available_gb }}GB free</div>
+            </div>
+             <div class="stat-card">
+                <div class="text-gray-400 text-sm">Disk</div>
+                <div class="text-2xl font-bold {{ 'text-red-400' if health.disk.status == 'critical' else 'text-green-400' }}">
+                    {{ health.disk.percent }}%
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="text-gray-400 text-sm">System Status</div>
+                <div class="text-2xl font-bold uppercase {{ 'text-red-500' if health.overall_status != 'ok' else 'text-green-500' }}">
+                    {{ health.overall_status }}
+                </div>
+            </div>
+        </div>
+
+        <!-- CLI Terminal -->
+        <div class="glass rounded-xl p-6">
+            <h2 class="text-xl font-bold mb-4">Command Center</h2>
+            <form id="cmd-form" class="flex gap-2" hx-post="/api/command" hx-target="#cmd-output" hx-swap="innerHTML">
+                <input type="text" name="command" placeholder="Ask Sanaa AI to do something..."
+                       class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-white">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-bold">Execute</button>
+            </form>
+            <div id="cmd-output" class="mt-4 font-mono text-sm bg-black rounded p-4 min-h-[100px] text-green-400 whitespace-pre-wrap"></div>
+        </div>
+
+        <!-- Alerts & Activity -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="glass rounded-xl p-6">
+                <h2 class="text-xl font-bold mb-4">Recent Alerts</h2>
+                <div class="space-y-2">
+                    {% for alert in alerts %}
+                    <div class="p-3 rounded bg-gray-900/50 border-l-4 {{ 'border-red-500' if alert.severity == 'critical' else 'border-yellow-500' }}">
+                        <div class="text-sm font-bold">{{ alert.message }}</div>
+                        <div class="text-xs text-gray-500">{{ alert.created_at }}</div>
+                    </div>
+                    {% else %}
+                    <div class="text-gray-500 italic">No recent alerts</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="glass rounded-xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                     <h2 class="text-xl font-bold">Connected Devices</h2>
+                </div>
+                 <div class="space-y-4">
+                    {% for device in devices %}
+                    <div class="flex items-center justify-between p-3 bg-gray-900/50 rounded">
+                        <div>
+                            <div class="font-bold">{{ device.device_name }}</div>
+                            <div class="text-xs text-gray-500">{{ device.device_id }}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm">{{ device.data.battery_percent }}%</div>
+                            <div class="text-xs text-gray-500">{{ device.created_at.strftime('%H:%M') }}</div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-gray-500 italic">No devices connected</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
