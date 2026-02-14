@@ -13,6 +13,12 @@ app.conf.timezone = 'Africa/Kampala'
 
 app.conf.beat_schedule = {
 
+    # ===== EVERY 2 MINUTES — WATCHDOG =====
+    'watchdog-check': {
+        'task': 'tasks.watchdog_check',
+        'schedule': 120,  # 2 minutes — high frequency for critical monitoring
+    },
+
     # ===== EVERY 5 MINUTES =====
     'server-health-check': {
         'task': 'tasks.check_server_health',
@@ -43,10 +49,98 @@ app.conf.beat_schedule = {
     },
 }
 
+
+def _run_async(coro):
+    """Helper to run async code in Celery sync tasks."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+@app.task
+def watchdog_check():
+    """Run watchdog check + self-healing cycle. Runs every 2 minutes."""
+    from agents.watchdog import ServerWatchdog
+    from agents.healer import SelfHealer
+    from agents.report_agent import ReportAgent
+
+    async def _run():
+        wd = ServerWatchdog()
+        heal = SelfHealer()
+        reporter = ReportAgent()
+
+        events = await wd.run_full_check()
+
+        if not events:
+            return  # All clear
+
+        # Auto-heal
+        actions = await heal.process_events(events)
+
+        # Persist critical/high alerts to database
+        from database import Alert, AuditLog
+        for e in events:
+            if e.severity in ("critical", "high"):
+                await Alert.create(
+                    severity=e.severity,
+                    message=e.message,
+                    metric=e.metric,
+                )
+
+        # Log healing actions
+        for a in actions:
+            await AuditLog.log(
+                actor="watchdog:healer",
+                action=f"auto_heal.{a['action']}",
+                resource=a.get("target", ""),
+                detail=a.get("output", ""),
+                success=a.get("success", False),
+            )
+
+        # Email alert for critical events
+        critical = [e for e in events if e.severity == "critical"]
+        if critical:
+            body = "CRITICAL SERVER ALERTS:\n\n"
+            for e in critical:
+                body += f"[{e.category}] {e.message}\n"
+                if e.remediation:
+                    body += f"  Fix: {e.remediation}\n"
+                body += "\n"
+
+            if actions:
+                body += "\nAUTO-HEALING ACTIONS:\n"
+                for a in actions:
+                    status = "OK" if a.get("success") else "FAILED"
+                    body += f"  - {a['action']} on {a.get('target','')} — {status}\n"
+
+            await reporter.send_alert_email(
+                subject=f"[Sanaa AI] CRITICAL: {len(critical)} server issue(s) detected",
+                body=body,
+            )
+
+        # Also email for high-severity
+        high = [e for e in events if e.severity == "high" and e not in critical]
+        if high and not critical:
+            body = "HIGH PRIORITY ALERTS:\n\n"
+            for e in high:
+                body += f"[{e.category}] {e.message}\n"
+            await reporter.send_alert_email(
+                subject=f"[Sanaa AI] WARNING: {len(high)} issue(s) need attention",
+                body=body,
+            )
+
+    _run_async(_run())
+
+
 @app.task
 def check_server_health():
     """Check server health and alert if thresholds exceeded"""
-    import asyncio
     from agents.server_health import ServerHealthAgent
     from agents.report_agent import ReportAgent
 
@@ -66,19 +160,12 @@ def check_server_health():
                     body=body
                 )
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    loop.run_until_complete(_run())
+    _run_async(_run())
 
 
 @app.task
 def scan_app_errors():
     """Scan logs for new errors"""
-    import asyncio
     from agents.app_monitor import AppMonitorAgent
     from agents.report_agent import ReportAgent
 
@@ -97,18 +184,12 @@ def scan_app_errors():
                 body=body
             )
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    loop.run_until_complete(_run())
+    _run_async(_run())
 
 
 @app.task
 def test_webapp_uptime():
     """Test all Sanaa webapps are responding"""
-    import asyncio
     from agents.web_test_agent import WebTestAgent
     from agents.report_agent import ReportAgent
 
@@ -127,18 +208,12 @@ def test_webapp_uptime():
                 body=body
             )
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    loop.run_until_complete(_run())
+    _run_async(_run())
 
 
 @app.task
 def send_daily_report():
     """Compile and send the daily morning report"""
-    import asyncio
     from agents.server_health import ServerHealthAgent
     from agents.email_agent import EmailInboxAgent
     from agents.news_agent import NewsAgent
@@ -159,27 +234,16 @@ def send_daily_report():
 
         await ReportAgent().send_daily_report(health, alerts, email_summary, news)
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    loop.run_until_complete(_run())
+    _run_async(_run())
 
 
 @app.task
 def check_email_inbox():
     """Check email inbox"""
-    import asyncio
     from agents.email_agent import EmailInboxAgent
 
     async def _run():
         agent = EmailInboxAgent()
         await agent.check_and_log()
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    loop.run_until_complete(_run())
+    _run_async(_run())

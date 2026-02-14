@@ -1,119 +1,225 @@
 """
-Sanaa AI LLM Brain
-Tiered intelligence: local model for routine, cloud for complex
+Sanaa AI LLM Brain — Tiered Intelligence with Memory Integration
+Tier 1: Local (Ollama) — free, fast, simple tasks
+Tier 2: Cloud cheap (Haiku/GPT-mini) — moderate reasoning
+Tier 3: Cloud premium (Sonnet/GPT-4o) — complex analysis
 """
 
-import os
 import json
-import subprocess
-from litellm import acompletion
+import re
+import logging
 import asyncio
+import time
+from litellm import acompletion
 
-SYSTEM_PROMPT = """You are Sanaa AI, an AI operations agent managing the Sanaa fintech platform ecosystem.
+from config import get_settings
+from database import LLMUsage, Command, Log, AuditLog, AsyncSessionLocal
 
-Your operator is Banks, the founder of Sanaa — a comprehensive fintech platform based in Uganda serving East Africa.
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
-SANAA ECOSYSTEM:
-- cards.sanaa.ug — Card/Identity platform
-- fx.sanaa.co — FX Trading platform
-- soko.sanaa.ug — Soko 24 Marketplace
-- sanaa.co — Main website
-- Sanaa Finance — SACCO/ERP services
-- Tech stack: Laravel 11, PostgreSQL, Redis, Filament Admin, Flutter mobile apps
-- VPS: Ubuntu Linux (sanaa-vps)
+TIERS = {
+    1: {
+        "name": "local",
+        "max_tokens": 2048,
+        "use_for": ["status_check", "simple_query", "format_response"],
+        "cost_per_1k": 0.0,
+    },
+    2: {
+        "name": "cloud_cheap",
+        "max_tokens": 4096,
+        "use_for": ["log_analysis", "email_summary", "moderate_reasoning"],
+        "cost_per_1k": 0.001,
+    },
+    3: {
+        "name": "cloud_premium",
+        "max_tokens": 8192,
+        "use_for": ["complex_analysis", "code_review", "planning", "security_audit"],
+        "cost_per_1k": 0.015,
+    },
+}
 
-YOUR CAPABILITIES:
-1. Monitor server health (CPU, RAM, Disk, Network, Services)
-2. Monitor all Sanaa web applications for errors and downtime
-3. Read and triage Banks' email inbox
-4. Fix minor server/application issues when approved
-5. Run database queries and maintenance
-6. Restart services (nginx, php-fpm, redis, queues)
-7. Test web applications (load pages, check forms, verify APIs)
-8. Search the web for relevant news and information
-9. Generate daily/weekly activity reports
-10. Monitor connected devices (Mac, phones)
-11. Execute bash commands on the server
-12. Analyze Laravel logs for errors
-
-YOUR RULES:
-- ALWAYS explain what you're about to do before doing it
-- For destructive operations (delete, drop, modify), ALWAYS require approval
-- Read-only operations (check status, read logs, test pages) can auto-execute
-- When something is wrong, assess severity and notify Banks appropriately
-- Be concise but thorough in reports
-- Think like a senior DevOps engineer + executive assistant
-- When in doubt, ask rather than act
-- Log everything you do
-"""
 
 class LLMBrain:
     def __init__(self):
-        self.strategy = os.getenv("LLM_STRATEGY", "auto")
-        self.local_model = f"ollama/{os.getenv('OLLAMA_MODEL', 'qwen2.5:7b')}"
-        # Fallback to local if cloud keys missing
-        if os.getenv("ANTHROPIC_API_KEY"):
-            self.cloud_model = "anthropic/claude-3-5-sonnet-20240620"
-        elif os.getenv("OPENAI_API_KEY"):
-            self.cloud_model = "openai/gpt-4o"
-        else:
-            self.cloud_model = self.local_model # Fallback
+        self.strategy = settings.llm_strategy
+        self.local_model = f"ollama/{settings.ollama_model}"
 
-    async def think(self, prompt: str, complexity: str = "auto") -> str:
+        # Build model chain for each tier
+        self.models = {1: [self.local_model]}
+
+        tier2 = []
+        if settings.anthropic_api_key:
+            tier2.append("anthropic/claude-haiku-4-5-20251001")
+        if settings.openai_api_key:
+            tier2.append("openai/gpt-4o-mini")
+        self.models[2] = tier2 if tier2 else [self.local_model]
+
+        tier3 = []
+        if settings.anthropic_api_key:
+            tier3.append("anthropic/claude-sonnet-4-5-20250929")
+        if settings.openai_api_key:
+            tier3.append("openai/gpt-4o")
+        self.models[3] = tier3 if tier3 else self.models[2]
+
+        # Memory integration (lazy init)
+        self._memory = None
+        self._context = None
+
+    @property
+    def memory(self):
+        if self._memory is None:
+            from memory.manager import MemoryManager
+            self._memory = MemoryManager()
+        return self._memory
+
+    @property
+    def context_assembler(self):
+        if self._context is None:
+            from memory.context import ContextAssembler
+            self._context = ContextAssembler(self.memory)
+        return self._context
+
+    # ==================== CORE THINKING ====================
+
+    async def think(
+        self,
+        prompt: str,
+        complexity: str = "auto",
+        session_id: str = None,
+        channel: str = "web",
+    ) -> str:
         """
-        Route to appropriate model based on task complexity.
-        complexity: low | high | auto
+        Route to appropriate model tier based on task complexity.
+        Now uses memory-enriched context when session_id is provided.
         """
-        model = self.local_model
+        tier = self._determine_tier(prompt, complexity)
 
-        if complexity == "high" or (complexity == "auto" and self._is_complex(prompt)):
-            model = self.cloud_model
-
-        try:
-            response = await acompletion(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=4096,
-                temperature=0.3,
+        # Build context with memories if session available
+        if session_id:
+            messages = await self.context_assembler.assemble(
+                prompt, session_id=session_id, channel=channel
             )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"LLM Error ({model}): {e}")
-            # Fallback: if cloud fails, try local; if local fails, try cloud
-            fallback = self.cloud_model if model == self.local_model else self.local_model
-            if fallback == model:
-                return f"Error: {str(e)}"
-                
-            try:
-                response = await acompletion(
-                    model=fallback,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=4096,
-                )
-                return response.choices[0].message.content
-            except Exception as e2:
-                return f"Error in fallback: {str(e2)}"
+        else:
+            from memory.context import SYSTEM_PROMPT
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
 
-    def _is_complex(self, prompt: str) -> bool:
-        """Heuristic: is this task complex enough to need cloud model?"""
+        # Try models with failover: tier N → N-1 → ... → 1
+        response_text = await self._call_with_failover(messages, tier)
+
+        # Save conversation turn if session exists
+        if session_id:
+            await self.context_assembler.save_turn(
+                session_id=session_id,
+                channel=channel,
+                sender_id="assistant",
+                role="assistant",
+                content=response_text,
+            )
+
+        return response_text
+
+    async def _call_with_failover(self, messages: list, starting_tier: int) -> str:
+        """Try models from starting tier down to tier 1 with failover."""
+        for tier in range(starting_tier, 0, -1):
+            tier_config = TIERS[tier]
+            for model in self.models[tier]:
+                try:
+                    start = time.monotonic()
+                    response = await acompletion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=tier_config["max_tokens"],
+                        temperature=0.3,
+                        timeout=30,
+                    )
+                    latency = int((time.monotonic() - start) * 1000)
+                    content = response.choices[0].message.content
+
+                    # Track usage
+                    await self._track_usage(
+                        model=model,
+                        tier=tier,
+                        usage=response.usage,
+                        latency_ms=latency,
+                    )
+
+                    return content
+
+                except Exception as e:
+                    logger.warning(f"Tier {tier} model {model} failed: {e}")
+                    continue
+
+        return "All models unavailable. Please try again later."
+
+    def _determine_tier(self, prompt: str, complexity: str) -> int:
+        """Determine which tier to use based on complexity hint or heuristics."""
+        if complexity == "low":
+            return 1
+        if complexity == "high":
+            return 3
+
+        # Auto-detect
+        prompt_lower = prompt.lower()
+
         complex_keywords = [
-            "fix", "debug", "refactor", "analyze code", "write code",
-            "migration", "deploy", "security", "research", "summarize article",
-            "strategy", "plan", "architecture"
+            "analyze", "plan", "review", "audit", "debug", "explain why",
+            "architecture", "strategy", "migration", "refactor", "security",
+            "write code", "fix", "deploy",
         ]
-        return any(kw in prompt.lower() for kw in complex_keywords)
+        simple_keywords = [
+            "status", "check", "restart", "list", "show", "what is",
+            "how many", "uptime", "health",
+        ]
 
-    async def analyze_command(self, command: str, server_context: dict, recent_logs: list) -> dict:
-        """Analyze a user command and create an execution plan"""
-        prompt = f"""You are Sanaa AI, Banks' AI operations agent for the Sanaa fintech platform.
+        token_estimate = len(prompt.split()) * 1.3
 
-Analyze this command and create an execution plan.
+        if any(kw in prompt_lower for kw in complex_keywords) or token_estimate > 500:
+            return 3
+        elif any(kw in prompt_lower for kw in simple_keywords) and token_estimate < 100:
+            return 1
+        else:
+            return 2
+
+    async def _track_usage(self, model: str, tier: int, usage, latency_ms: int):
+        """Record token usage and estimated cost."""
+        try:
+            input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+            output_tokens = getattr(usage, "completion_tokens", 0) or 0
+            cost_per_1k = TIERS[tier]["cost_per_1k"]
+            cost = (input_tokens + output_tokens) / 1000 * cost_per_1k
+
+            provider = model.split("/")[0] if "/" in model else "unknown"
+
+            async with AsyncSessionLocal() as session:
+                entry = LLMUsage(
+                    model=model,
+                    provider=provider,
+                    tier=tier,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=cost,
+                    latency_ms=latency_ms,
+                )
+                session.add(entry)
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to track LLM usage: {e}")
+
+    # ==================== COMMAND ANALYSIS ====================
+
+    async def analyze_command(
+        self,
+        command: str,
+        server_context: dict,
+        recent_logs: list,
+        session_id: str = None,
+    ) -> dict:
+        """Analyze a user command and create an execution plan."""
+        prompt = f"""Analyze this command and create an execution plan.
 
 COMMAND: {command}
 
@@ -133,57 +239,55 @@ Respond ONLY in JSON with:
     "risks": ["any risks"]
 }}"""
 
-        result = await self.think(prompt, complexity="high")
+        result = await self.think(prompt, complexity="high", session_id=session_id)
+        return self._parse_json_response(result)
+
+    def _parse_json_response(self, result: str) -> dict:
+        """Parse JSON from LLM response, handling markdown code blocks."""
         try:
-            # Try to parse JSON clean
             return json.loads(result)
         except json.JSONDecodeError:
-            # Extract JSON from markdown code blocks if needed
-            import re
-            match = re.search(r'\{[\s\S]*\}', result)
+            match = re.search(r"\{[\s\S]*\}", result)
             if match:
                 try:
                     return json.loads(match.group())
-                except:
+                except json.JSONDecodeError:
                     pass
-            
-            # Fallback
             return {
-                "summary": result[:100] + "...",
+                "summary": result[:200],
                 "plan": ["Manual review needed (JSON parse failed)"],
                 "auto_execute": False,
-                "severity": "medium"
+                "severity": "medium",
             }
 
+    # ==================== PLAN EXECUTION ====================
+
     async def execute_plan(self, cmd_id: str, plan: list[str]):
-        """Execute an approved plan step by step"""
-        from database import Command, Log
+        """Execute an approved plan step by step."""
         results = []
 
-        for i, step in enumerate(plan):
+        for step in plan:
             try:
-                # Use LLM to translate step into actual bash/python command
                 cmd_prompt = (
-                    f"Translate this plan step into a safe bash command. "
-                    f"Only output the command, nothing else. "
-                    f"If it's not safe to automate, output 'SKIP: reason'.\n\n"
+                    "Translate this plan step into a safe bash command. "
+                    "Only output the command, nothing else. "
+                    "If it's not safe to automate, output 'SKIP: reason'.\n\n"
                     f"Step: {step}"
                 )
                 actual_cmd = await self.think(cmd_prompt, complexity="low")
-                actual_cmd = actual_cmd.strip().replace('`', '')
+                actual_cmd = actual_cmd.strip().strip("`").strip()
 
                 if actual_cmd.startswith("SKIP:"):
                     results.append({"step": step, "status": "skipped", "reason": actual_cmd})
                     continue
 
-                # Execute with timeout and capture output
                 proc = await asyncio.create_subprocess_shell(
                     actual_cmd,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-                
+
                 results.append({
                     "step": step,
                     "command": actual_cmd,
@@ -191,17 +295,33 @@ Respond ONLY in JSON with:
                     "output": stdout.decode()[-500:] if stdout else "",
                     "error": stderr.decode()[-500:] if stderr else "",
                 })
+
+                # Audit log
+                await AuditLog.log(
+                    actor="brain",
+                    action="command.execute_step",
+                    resource=actual_cmd[:200],
+                    success=proc.returncode == 0,
+                )
+
             except asyncio.TimeoutError:
                 results.append({"step": step, "status": "timeout"})
             except Exception as e:
                 results.append({"step": step, "status": "error", "error": str(e)})
 
-        # Update command record
         await Command.update_by_id(cmd_id, status="completed", results=results)
-
-        # Log execution
         await Log.create(
             source="brain",
             level="info",
-            message=f"Executed plan for command {cmd_id}: {len(results)} steps completed"
+            message=f"Executed plan for command {cmd_id}: {len(results)} steps",
         )
+
+    # ==================== MEMORY HELPERS ====================
+
+    async def remember(self, content: str, category: str = "fact", source: str = "brain"):
+        """Store a fact in long-term memory."""
+        return await self.memory.store(content, category=category, source=source)
+
+    async def recall(self, query: str, limit: int = 5) -> list[dict]:
+        """Search long-term memory."""
+        return await self.memory.search(query, limit=limit)

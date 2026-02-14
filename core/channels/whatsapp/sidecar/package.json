@@ -1,0 +1,15 @@
+{
+  "name": "antigravity-whatsapp-sidecar",
+  "version": "1.0.0",
+  "description": "Baileys WebSocket bridge for Sanaa AI WhatsApp integration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.0",
+    "ws": "^8.18.0",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

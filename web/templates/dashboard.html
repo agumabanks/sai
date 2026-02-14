@@ -7,106 +7,361 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.10/htmx.min.js"></script>
     <style>
-        body { background-color: #0b0c15; color: #e2e8f0; font-family: system-ui, sans-serif; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .stat-card { @apply p-4 rounded-xl glass; }
+        body { background-color: #0b0c15; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
+        .glass:hover { border-color: rgba(255,255,255,0.15); }
+        .stat-card { transition: border-color 0.2s; }
+        #cmd-output:empty { display: none; }
+        #cmd-output:not(:empty) { display: block; }
+        .alert-critical { border-left: 4px solid #ef4444; }
+        .alert-high { border-left: 4px solid #f97316; }
+        .alert-warning { border-left: 4px solid #eab308; }
+        .alert-info { border-left: 4px solid #3b82f6; }
+
+        /* FAB Styles */
+        .fab-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px); z-index: 40;
+            opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+        }
+        .fab-overlay.active { opacity: 1; pointer-events: auto; }
+        .fab-menu {
+            position: fixed; bottom: 100px; right: 24px; z-index: 50;
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+            transform: scale(0.8) translateY(30px); opacity: 0;
+            pointer-events: none; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .fab-menu.active { transform: scale(1) translateY(0); opacity: 1; pointer-events: auto; }
+        .fab-action {
+            width: 100px; height: 90px; border-radius: 16px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 6px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+            border: none; color: white; font-size: 11px; font-weight: 600;
+            text-align: center; line-height: 1.2;
+        }
+        .fab-action:hover { transform: scale(1.06); box-shadow: 0 8px 25px rgba(0,0,0,0.4); }
+        .fab-action svg { width: 28px; height: 28px; }
+        .fab-btn {
+            position: fixed; bottom: 28px; right: 28px; z-index: 50;
+            width: 60px; height: 60px; border-radius: 50%;
+            border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            background: #1a1a2e;
+            overflow: hidden;
+        }
+        .fab-btn:hover { transform: scale(1.08); box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+        .fab-btn.active { transform: rotate(45deg); background: #ef4444; }
+        .fab-btn img { width: 38px; height: 38px; object-fit: contain; transition: opacity 0.2s; }
+        .fab-btn.active img { opacity: 0; }
+        .fab-btn .fab-close {
+            position: absolute; font-size: 28px; font-weight: bold; color: white;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .fab-btn.active .fab-close { opacity: 1; }
     </style>
 </head>
-<body class="min-h-screen p-6">
+<body class="min-h-screen p-4 md:p-6">
     <div class="max-w-7xl mx-auto space-y-6">
+
         <!-- Header -->
-        <header class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-                Sanaa AI
-            </h1>
-            <div class="flex items-center gap-4">
-                <span class="text-sm text-gray-400">
-                    {{ now.strftime('%Y-%m-%d %H:%M:%S UTC') }}
-                </span>
-                <span class="text-sm text-gray-500">|</span>
-                <span class="text-sm text-gray-400">{{ user.email }}</span>
-                <a href="/logout" class="text-sm text-red-400 hover:text-red-300 transition">Logout</a>
+        <header class="flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                    Sanaa AI
+                </h1>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-400 border border-green-800">v2.0</span>
+            </div>
+            <div class="flex items-center gap-4 text-sm">
+                <span class="text-gray-500 hidden md:inline">{{ now.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+                <span class="text-gray-400">{{ user.email }}</span>
+                <a href="/logout" class="text-red-400 hover:text-red-300 transition">Logout</a>
             </div>
         </header>
 
         <!-- Stats Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="stat-card">
-                <div class="text-gray-400 text-sm">CPU Load</div>
-                <div class="text-2xl font-bold {{ 'text-red-400' if health.cpu.status == 'critical' else 'text-green-400' }}">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <div class="stat-card glass rounded-xl p-4">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">CPU</div>
+                <div class="text-2xl font-bold mt-1 {% if health.cpu.percent > 85 %}text-red-400{% elif health.cpu.percent > 60 %}text-yellow-400{% else %}text-green-400{% endif %}">
                     {{ health.cpu.percent }}%
                 </div>
+                <div class="text-xs text-gray-500 mt-1">{{ health.cpu.cores }} cores &middot; load {{ health.cpu.load_1m }}</div>
             </div>
-            <div class="stat-card">
-                <div class="text-gray-400 text-sm">Memory</div>
-                <div class="text-2xl font-bold {{ 'text-red-400' if health.memory.status == 'critical' else 'text-green-400' }}">
+            <div class="stat-card glass rounded-xl p-4">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Memory</div>
+                <div class="text-2xl font-bold mt-1 {% if health.memory.percent > 85 %}text-red-400{% elif health.memory.percent > 60 %}text-yellow-400{% else %}text-green-400{% endif %}">
                     {{ health.memory.percent }}%
                 </div>
-                <div class="text-xs text-gray-500">{{ health.memory.available_gb }}GB free</div>
+                <div class="text-xs text-gray-500 mt-1">{{ health.memory.available_gb }} GB free</div>
             </div>
-             <div class="stat-card">
-                <div class="text-gray-400 text-sm">Disk</div>
-                <div class="text-2xl font-bold {{ 'text-red-400' if health.disk.status == 'critical' else 'text-green-400' }}">
+            <div class="stat-card glass rounded-xl p-4">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Disk</div>
+                <div class="text-2xl font-bold mt-1 {% if health.disk.percent > 90 %}text-red-400{% elif health.disk.percent > 70 %}text-yellow-400{% else %}text-green-400{% endif %}">
                     {{ health.disk.percent }}%
                 </div>
+                <div class="text-xs text-gray-500 mt-1">{{ health.disk.free_gb }} GB free</div>
             </div>
-            <div class="stat-card">
-                <div class="text-gray-400 text-sm">System Status</div>
-                <div class="text-2xl font-bold uppercase {{ 'text-red-500' if health.overall_status != 'ok' else 'text-green-500' }}">
+            <div class="stat-card glass rounded-xl p-4">
+                <div class="text-gray-400 text-xs uppercase tracking-wider">Status</div>
+                <div class="text-2xl font-bold mt-1 uppercase {% if health.overall_status == 'critical' %}text-red-500{% elif health.overall_status == 'degraded' %}text-yellow-500{% else %}text-green-500{% endif %}">
                     {{ health.overall_status }}
                 </div>
+                <div class="text-xs text-gray-500 mt-1">Since {{ health.uptime_since[:10] }}</div>
             </div>
         </div>
 
-        <!-- CLI Terminal -->
-        <div class="glass rounded-xl p-6">
-            <h2 class="text-xl font-bold mb-4">Command Center</h2>
-            <form id="cmd-form" class="flex gap-2" hx-post="/api/command" hx-target="#cmd-output" hx-swap="innerHTML">
-                <input type="text" name="command" placeholder="Ask Sanaa AI to do something..."
-                       class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-white">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-bold">Execute</button>
-            </form>
-            <div id="cmd-output" class="mt-4 font-mono text-sm bg-black rounded p-4 min-h-[100px] text-green-400 whitespace-pre-wrap"></div>
+        <!-- Services Status -->
+        <div class="glass rounded-xl p-4">
+            <div class="text-gray-400 text-xs uppercase tracking-wider mb-3">Services</div>
+            <div class="flex flex-wrap gap-2">
+                {% for svc, status in health.services.items() %}
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                    {% if status == 'active' %}bg-green-900/30 text-green-400 border border-green-800/50
+                    {% elif status == 'inactive' %}bg-red-900/30 text-red-400 border border-red-800/50
+                    {% else %}bg-gray-800/50 text-gray-400 border border-gray-700/50{% endif %}">
+                    <span class="w-1.5 h-1.5 rounded-full {% if status == 'active' %}bg-green-400{% elif status == 'inactive' %}bg-red-400{% else %}bg-gray-500{% endif %}"></span>
+                    {{ svc }}
+                </span>
+                {% endfor %}
+            </div>
         </div>
 
-        <!-- Alerts & Activity -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Live Watchdog Feed -->
+        <div class="glass rounded-xl p-4">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-sm font-bold flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    Live Server Monitor
+                </h2>
+                <div class="flex items-center gap-2">
+                    <button hx-post="/api/watchdog/run" hx-target="#watchdog-feed" hx-swap="innerHTML"
+                            hx-indicator="#wd-spinner"
+                            class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-lg transition border border-gray-700">
+                        Run Check Now
+                    </button>
+                    <span id="wd-spinner" class="htmx-indicator text-gray-500 text-xs animate-pulse">checking...</span>
+                </div>
+            </div>
+            <div id="watchdog-feed" class="space-y-1.5 max-h-48 overflow-y-auto"
+                 hx-get="/api/watchdog/events-feed" hx-trigger="load, every 60s" hx-swap="innerHTML">
+                <div class="text-gray-500 text-sm italic p-3 text-center">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Command Center -->
+        <div class="glass rounded-xl p-6">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <span class="text-blue-400">$</span> Command Center
+            </h2>
+            <form id="cmd-form" hx-post="/api/command" hx-target="#cmd-output" hx-swap="innerHTML"
+                  hx-indicator="#cmd-spinner" class="flex gap-2">
+                <input type="text" name="command"
+                       placeholder="Ask Sanaa AI anything... (e.g. 'check server health', 'show recent errors')"
+                       class="flex-1 bg-gray-900/80 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white placeholder-gray-500"
+                       autocomplete="off" required>
+                <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-bold transition whitespace-nowrap">
+                    Execute
+                </button>
+            </form>
+            <div id="cmd-spinner" class="htmx-indicator mt-3 text-gray-400 text-sm">
+                <span class="inline-block animate-pulse">Thinking...</span>
+            </div>
+            <div id="cmd-output" class="mt-4 font-mono text-sm bg-black/60 rounded-lg p-4 text-green-400 whitespace-pre-wrap border border-gray-800"></div>
+        </div>
+
+        <!-- Two Column: Alerts + Devices -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Recent Alerts -->
             <div class="glass rounded-xl p-6">
-                <h2 class="text-xl font-bold mb-4">Recent Alerts</h2>
-                <div class="space-y-2">
+                <h2 class="text-lg font-bold mb-4">Recent Alerts</h2>
+                <div class="space-y-2 max-h-80 overflow-y-auto">
                     {% for alert in alerts %}
-                    <div class="p-3 rounded bg-gray-900/50 border-l-4 {{ 'border-red-500' if alert.severity == 'critical' else 'border-yellow-500' }}">
-                        <div class="text-sm font-bold">{{ alert.message }}</div>
-                        <div class="text-xs text-gray-500">{{ alert.created_at }}</div>
+                    <div class="p-3 rounded-lg bg-gray-900/50
+                        {% if alert.severity == 'critical' %}alert-critical
+                        {% elif alert.severity == 'high' %}alert-high
+                        {% elif alert.severity == 'warning' %}alert-warning
+                        {% else %}alert-info{% endif %}">
+                        <div class="flex justify-between items-start">
+                            <div class="text-sm">{{ alert.message }}</div>
+                            <span class="text-xs px-1.5 py-0.5 rounded
+                                {% if alert.severity == 'critical' %}bg-red-900/50 text-red-300
+                                {% elif alert.severity == 'high' %}bg-orange-900/50 text-orange-300
+                                {% else %}bg-gray-800 text-gray-400{% endif %}">
+                                {{ alert.severity }}
+                            </span>
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            {{ alert.created_at.strftime('%b %d %H:%M') if alert.created_at else '' }}
+                            {% if alert.metric %}&middot; {{ alert.metric }}{% endif %}
+                        </div>
                     </div>
                     {% else %}
-                    <div class="text-gray-500 italic">No recent alerts</div>
+                    <div class="text-gray-500 italic text-sm py-4 text-center">No recent alerts</div>
                     {% endfor %}
                 </div>
             </div>
 
+            <!-- Connected Devices -->
             <div class="glass rounded-xl p-6">
-                <div class="flex justify-between items-center mb-4">
-                     <h2 class="text-xl font-bold">Connected Devices</h2>
-                </div>
-                 <div class="space-y-4">
+                <h2 class="text-lg font-bold mb-4">Connected Devices</h2>
+                <div class="space-y-3 max-h-80 overflow-y-auto">
                     {% for device in devices %}
-                    <div class="flex items-center justify-between p-3 bg-gray-900/50 rounded">
+                    <div class="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
                         <div>
-                            <div class="font-bold">{{ device.device_name }}</div>
+                            <div class="font-medium text-sm">{{ device.device_name or device.device_id }}</div>
                             <div class="text-xs text-gray-500">{{ device.device_id }}</div>
                         </div>
                         <div class="text-right">
-                            <div class="text-sm">{{ device.data.battery_percent }}%</div>
-                            <div class="text-xs text-gray-500">{{ device.created_at.strftime('%H:%M') }}</div>
+                            {% if device.data and device.data.battery_percent is defined %}
+                            <div class="text-sm {% if device.data.battery_percent < 20 %}text-red-400{% else %}text-green-400{% endif %}">
+                                {{ device.data.battery_percent }}% battery
+                            </div>
+                            {% endif %}
+                            <div class="text-xs text-gray-500">
+                                {{ device.created_at.strftime('%H:%M') if device.created_at else 'N/A' }}
+                            </div>
                         </div>
                     </div>
                     {% else %}
-                    <div class="text-gray-500 italic">No devices connected</div>
+                    <div class="text-gray-500 italic text-sm py-4 text-center">No devices connected</div>
                     {% endfor %}
                 </div>
             </div>
         </div>
+
+        <!-- Recent Commands -->
+        {% if commands %}
+        <div class="glass rounded-xl p-6">
+            <h2 class="text-lg font-bold mb-4">Recent Commands</h2>
+            <div class="space-y-2 max-h-60 overflow-y-auto">
+                {% for cmd in commands %}
+                <div class="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg text-sm">
+                    <div class="flex-1 font-mono text-gray-300 truncate mr-4">{{ cmd.text }}</div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="px-2 py-0.5 rounded text-xs
+                            {% if cmd.status == 'completed' %}bg-green-900/50 text-green-400
+                            {% elif cmd.status == 'executing' %}bg-blue-900/50 text-blue-400
+                            {% elif cmd.status == 'awaiting_approval' %}bg-yellow-900/50 text-yellow-400
+                            {% else %}bg-gray-800 text-gray-400{% endif %}">
+                            {{ cmd.status }}
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            {{ cmd.created_at.strftime('%H:%M') if cmd.created_at else '' }}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <footer class="text-center text-gray-600 text-xs py-4">
+            Sanaa AI v2.0 &middot; ai.sanaa.co
+        </footer>
     </div>
+
+    <!-- FAB Overlay -->
+    <div class="fab-overlay" id="fabOverlay" onclick="toggleFab()"></div>
+
+    <!-- FAB Quick Actions Menu -->
+    <div class="fab-menu" id="fabMenu">
+        <button class="fab-action" style="background: linear-gradient(135deg, #ef4444, #dc2626);" onclick="fabCommand('check server health')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            Server Health
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #3b82f6, #2563eb);" onclick="fabCommand('show recent alerts')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
+            Alerts
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #10b981, #059669);" onclick="fabCommand('check all services status')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Services
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);" onclick="fabCommand('search memory for recent events')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
+            Memory
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #f59e0b, #d97706);" onclick="fabCommand('scan recent application logs for errors')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            View Logs
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #ec4899, #db2777);" onclick="fabCommand('run uptime test on all monitored sites')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/></svg>
+            Site Test
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #14b8a6, #0d9488);" onclick="fabCommand('show connected devices')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Devices
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #6366f1, #4f46e5);" onclick="fabCommand('generate daily operations report')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Daily Report
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid rgba(255,255,255,0.15);" onclick="fabCommand('run security audit')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Security
+        </button>
+        <button class="fab-action" style="background: linear-gradient(135deg, #ef4444, #b91c1c); border: 1px solid rgba(255,255,255,0.15);" onclick="runWatchdog()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Watchdog
+        </button>
+    </div>
+
+    <!-- FAB Button -->
+    <button class="fab-btn" id="fabBtn" onclick="toggleFab()">
+        <img src="https://finance.sanaa.ug/assets/admin/logos/sanaa.png" alt="Sanaa">
+        <span class="fab-close">+</span>
+    </button>
+
+    <script>
+        // Clear input after submission
+        document.getElementById('cmd-form').addEventListener('htmx:afterRequest', function(e) {
+            if (e.detail.successful) {
+                this.querySelector('input[name="command"]').value = '';
+            }
+        });
+
+        // FAB toggle
+        function toggleFab() {
+            const btn = document.getElementById('fabBtn');
+            const menu = document.getElementById('fabMenu');
+            const overlay = document.getElementById('fabOverlay');
+            const isActive = btn.classList.contains('active');
+
+            btn.classList.toggle('active');
+            menu.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        // FAB quick command — injects into command input and submits
+        function fabCommand(text) {
+            toggleFab();
+            const input = document.querySelector('input[name="command"]');
+            const form = document.getElementById('cmd-form');
+            input.value = text;
+            // Scroll to command center
+            form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Trigger htmx submit
+            htmx.trigger(form, 'submit');
+        }
+
+        // Watchdog — run check and scroll to feed
+        function runWatchdog() {
+            toggleFab();
+            const feed = document.getElementById('watchdog-feed');
+            const runBtn = document.querySelector('[hx-post="/api/watchdog/run"]');
+            // Scroll to watchdog panel
+            feed.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Trigger the run-check button via htmx
+            if (runBtn) {
+                htmx.trigger(runBtn, 'click');
+            }
+        }
+    </script>
 </body>
 </html>
