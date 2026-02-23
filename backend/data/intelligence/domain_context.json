@@ -1,0 +1,115 @@
+{
+  "repos": {
+    "soko": {
+      "summary": "The Soko repository is a Laravel-based e-commerce marketplace platform that enables multi-tenant features for sellers, auctions, and admin management. It provides key features such as seller shops, auction themes, product management, and payment integrations. The platform aims to facilitate online commerce and provide a seamless experience for buyers and sellers.",
+      "key_terms": [
+        "e-commerce",
+        "marketplace",
+        "multi-tenant",
+        "auctions",
+        "seller management",
+        "payment gateways"
+      ],
+      "strategic_priority": "high",
+      "impact_areas": [
+        "payments",
+        "logistics",
+        "seller onboarding",
+        "auction management",
+        "customer experience"
+      ]
+    },
+    "fx.sanaa.co": {
+      "summary": "The fx.sanaa.co repository is a critical component of the Sanaa ecosystem, providing a foreign exchange (FX) trading platform with features such as position tracking, risk management, and historical data synchronization. The platform enables users to create and manage trades, monitor their positions, and access various technical indicators. The successful deployment of this platform is essential for the Sanaa ecosystem's financial services offerings.",
+      "key_terms": [
+        "FX trading",
+        "position tracking",
+        "risk management",
+        "historical data synchronization",
+        "technical indicators",
+        "MySQL",
+        "Docker",
+        "PM2",
+        "JWT"
+      ],
+      "strategic_priority": "high",
+      "impact_areas": [
+        "payments",
+        "trading",
+        "financial services",
+        "risk management",
+        "data analytics"
+      ]
+    },
+    "sanaa-cloud": {
+      "summary": "The sanaa-cloud repository appears to be related to cloud-based services, but the provided documentation lacks specific details. However, it can be inferred that it might be involved in providing scalable and on-demand computing resources. The core business purpose seems to be supporting the Sanaa ecosystem with cloud infrastructure.",
+      "key_terms": [
+        "cloud",
+        "sanaa",
+        "infrastructure",
+        "scalability",
+        "on-demand"
+      ],
+      "strategic_priority": "high",
+      "impact_areas": [
+        "infrastructure",
+        "computing",
+        "storage"
+      ]
+    },
+    "procurement": {
+      "summary": "The procurement repository utilizes the Laravel framework to facilitate web application development, focusing on efficient and enjoyable development experiences. Laravel provides a robust set of tools for tasks such as routing, dependency injection, and database management. This enables the Sanaa ecosystem to build scalable and maintainable applications.",
+      "key_terms": [
+        "Laravel",
+        "web application framework",
+        "routing",
+        "dependency injection",
+        "database management",
+        "ORM",
+        "schema migrations",
+        "background job processing",
+        "event broadcasting"
+      ],
+      "strategic_priority": "medium",
+      "impact_areas": [
+        "supply chain management",
+        "vendor management",
+        "contract management",
+        "procurement workflows"
+      ]
+    },
+    "cards.sanaa.ug": {
+      "summary": "The cards.sanaa.ug repository utilizes the Laravel framework, a web application framework with expressive syntax, to facilitate development of robust applications. It provides tools for large-scale applications, including routing, dependency injection, and database management. The repository's purpose is to leverage Laravel's capabilities for building scalable and maintainable applications within the Sanaa ecosystem.",
+      "key_terms": [
+        "Laravel",
+        "web application framework",
+        "routing",
+        "dependency injection",
+        "database management",
+        "ORM",
+        "schema migrations",
+        "background job processing",
+        "event broadcasting"
+      ],
+      "strategic_priority": "high",
+      "impact_areas": [
+        "payments",
+        "logistics",
+        "e-commerce",
+        "application development",
+        "API integration"
+      ]
+    }
+  },
+  "global_terms": [],
+  "strategic_goals": [],
+  "strategic_signals": [
+    {
+      "timestamp": "2026-02-15T03:04:03.218325",
+      "category": "test",
+      "title": "System Check",
+      "summary": "Verification in progress",
+      "score": 5
+    }
+  ]
+}

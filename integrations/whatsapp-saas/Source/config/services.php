@@ -1,0 +1,61 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Third Party Services
+    |--------------------------------------------------------------------------
+    |
+    | This file is for storing the credentials for third party services such
+    | as Mailgun, Postmark, AWS and more. This file provides the de facto
+    | location for this type of information, allowing packages to have
+    | a conventional file to locate the various service credentials.
+    |
+    */
+
+    'mailgun' => [
+        'domain' => env('MAILGUN_DOMAIN'),
+        'secret' => env('MAILGUN_SECRET'),
+        'endpoint' => env('MAILGUN_ENDPOINT', 'api.mailgun.net'),
+    ],
+
+    'postmark' => [
+        'token' => env('POSTMARK_TOKEN'),
+    ],
+
+    'ses' => [
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    ],
+
+    'translation' => [
+        // Microsoft translation
+        // https://azure.microsoft.com/en-us/pricing/details/cognitive-services/translator-text-api/
+        'microsoft' => [
+            'enabled' => true,
+            'name' => 'Microsoft Translator API',
+            // subscription key
+            'subscription_key' => env('MICROSOFT_TRANSLATE_API_KEY'),
+        ],
+    ],
+    'resend' => [
+        'key' => env('RESEND_KEY'),
+    ],
+
+    'slack' => [
+        'notifications' => [
+            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
+            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+        ],
+    ],
+
+    'soko_provision_key' => env('SOKO_PROVISION_KEY'),
+
+    // Soko webhook forwarding
+    'soko_webhook_url' => env('SOKO_WEBHOOK_URL', 'https://soko.sanaa.ug/api/webhooks/whatsapp'),
+    'soko_webhook_secret' => env('SOKO_WEBHOOK_SECRET', ''),
+    'soko_webhook_enabled' => env('SOKO_WEBHOOK_ENABLED', false),
+
+];

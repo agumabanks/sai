@@ -40,6 +40,15 @@ logs/*.txt
 data/*.json
 data/*.db
 data/*.sqlite
+data/news/
+backend/data/news/
+
+# Local backup/archive artifacts
+whatsapp-saas.zip
+
+# Runtime/generated outputs
+backend/backend.log
+frontend/output.json
 
 # OS
 .DS_Store

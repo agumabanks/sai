@@ -1,0 +1,25 @@
+name: app_monitor
+version: "1.0.0"
+description: Scan application logs for errors, warnings, and anomalies across Sanaa ecosystem apps
+permissions: [filesystem]
+requires_approval: false
+timeout: 30
+tags: [monitoring, logs, errors]
+handler: handler
+parameters:
+  - name: app
+    type: string
+    description: Specific app to scan (e.g. soko, fx, finance) or 'all' for all apps
+    required: false
+    default: all
+  - name: severity
+    type: string
+    description: Minimum severity level to include
+    required: false
+    default: error
+    enum: [error, warning, info, all]
+  - name: hours
+    type: integer
+    description: Number of hours to look back
+    required: false
+    default: 1

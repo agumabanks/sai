@@ -1,0 +1,19 @@
+name: web_test
+version: "1.0.0"
+description: Test webapp uptime and response times across all Sanaa ecosystem sites
+permissions: [network]
+requires_approval: false
+timeout: 60
+tags: [monitoring, uptime, testing]
+handler: handler
+parameters:
+  - name: url
+    type: string
+    description: Specific URL to test, or 'all' for all monitored sites
+    required: false
+    default: all
+  - name: timeout
+    type: integer
+    description: Request timeout in seconds
+    required: false
+    default: 10

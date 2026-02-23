@@ -1,0 +1,81 @@
+name: deploy_app
+version: "1.0.0"
+description: Automated deployment pipeline — git pull, build, migrate, restart, verify
+
+args:
+  app_path:
+    type: string
+    description: Path to the application root directory
+
+steps:
+  - id: pre_check
+    action: skill
+    description: Verify server health before deployment
+    params:
+      skill: server_health
+      args:
+        metric: all
+
+  - id: git_pull
+    action: shell
+    description: Pull latest code changes
+    params:
+      command: "cd {{ args.app_path }} && git pull origin main"
+    depends_on: [pre_check]
+
+  - id: review_changes
+    action: shell
+    description: Show recent commit log for review
+    params:
+      command: "cd {{ args.app_path }} && git log --oneline -5"
+    depends_on: [git_pull]
+
+  - id: approve_deploy
+    action: notify
+    description: Require human approval before proceeding
+    approval: true
+    params:
+      channel: web
+      message: |
+        Deployment ready for {{ args.app_path }}.
+        Recent changes: {{ steps.review_changes.output }}
+        Approve to continue with build and restart.
+    depends_on: [review_changes]
+
+  - id: install_deps
+    action: shell
+    description: Install/update dependencies
+    params:
+      command: "cd {{ args.app_path }} && (test -f composer.json && composer install --no-dev --optimize-autoloader) || (test -f package.json && npm install --production) || (test -f requirements.txt && pip install -r requirements.txt) || true"
+    timeout: 120
+    depends_on: [approve_deploy]
+
+  - id: migrate
+    action: shell
+    description: Run database migrations
+    params:
+      command: "cd {{ args.app_path }} && (test -f artisan && php artisan migrate --force) || (test -f manage.py && python manage.py migrate) || true"
+    depends_on: [install_deps]
+
+  - id: restart_service
+    action: shell
+    description: Restart the application service
+    params:
+      command: "cd {{ args.app_path }} && (test -f ecosystem.config.js && pm2 restart ecosystem.config.js) || (systemctl restart $(basename {{ args.app_path }})) || true"
+    depends_on: [migrate]
+
+  - id: post_verify
+    action: skill
+    description: Verify health after deployment
+    params:
+      skill: web_test
+      args: {}
+    depends_on: [restart_service]
+
+  - id: report
+    action: notify
+    description: Send deployment result
+    params:
+      channel: web
+      message: "Deployment of {{ args.app_path }} complete. Verification: {{ steps.post_verify.output }}"
+    depends_on: [post_verify]

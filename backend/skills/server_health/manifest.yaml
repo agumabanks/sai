@@ -1,0 +1,21 @@
+name: server_health
+version: "1.0.0"
+description: Check server health metrics including CPU, RAM, disk usage, and service status
+permissions: [shell]
+requires_approval: false
+timeout: 15
+tags: [monitoring, infrastructure, health]
+handler: handler
+parameters:
+  - name: metric
+    type: string
+    description: Specific metric to check (cpu, ram, disk, services, docker, all)
+    required: false
+    default: all
+    enum: [cpu, ram, disk, services, docker, all]
+  - name: format
+    type: string
+    description: Output format
+    required: false
+    default: text
+    enum: [text, json]

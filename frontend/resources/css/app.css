@@ -1,0 +1,308 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Inter', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+
+    /* Refined Sanaa Color Palette */
+    --color-sanaa-obsidian: #030712;
+    --color-sanaa-indigo: hsl(234, 89%, 64%);
+    --color-sanaa-emerald: hsl(158, 80%, 48%);
+    --color-sanaa-cyan: hsl(189, 85%, 55%);
+    --color-sanaa-purple: hsl(262, 83%, 65%);
+    --color-sanaa-amber: hsl(38, 92%, 50%);
+    --color-sanaa-rose: hsl(346, 77%, 58%);
+
+    /* Refined Gray Scale - Premium neutrals */
+    --color-gray-950: #0a0a0f;
+    --color-gray-900: #111118;
+    --color-gray-800: #1a1a24;
+    --color-gray-700: #2d2d3d;
+    --color-gray-600: #4a4a5e;
+    --color-gray-500: #6b6b81;
+    --color-gray-400: #9090a6;
+
+    /* Shadow Scale - 5 levels of depth */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 2px 4px -1px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 20px -4px rgba(0, 0, 0, 0.15), 0 4px 8px -4px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 40px -8px rgba(0, 0, 0, 0.25), 0 8px 16px -8px rgba(0, 0, 0, 0.15);
+    --shadow-2xl: 0 30px 60px -12px rgba(0, 0, 0, 0.35), 0 12px 24px -12px rgba(0, 0, 0, 0.2);
+
+    /* Glow Shadows - Brand colors */
+    --shadow-glow-indigo: 0 0 24px -4px hsla(234, 89%, 64%, 0.3);
+    --shadow-glow-indigo-lg: 0 0 48px -8px hsla(234, 89%, 64%, 0.4);
+    --shadow-glow-emerald: 0 0 24px -4px hsla(158, 80%, 48%, 0.25);
+    --shadow-glow-cyan: 0 0 24px -4px hsla(189, 85%, 55%, 0.25);
+}
+
+/* ==================== FILAMENT DARK OVERRIDES ==================== */
+/* Force dark backgrounds on Filament panels — makes glass-dark actually premium */
+
+.fi-body {
+    background: var(--color-gray-950) !important;
+}
+
+.fi-sidebar {
+    background: rgba(10, 10, 15, 0.95) !important;
+    backdrop-filter: blur(20px) saturate(150%);
+    border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+.fi-topbar {
+    background: rgba(10, 10, 15, 0.85) !important;
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+.fi-main {
+    background: transparent !important;
+}
+
+.fi-page-header {
+    display: none !important;
+}
+
+/* Filament sidebar item colors */
+.fi-sidebar-item-label {
+    color: rgba(144, 144, 166, 1) !important;
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-label {
+    color: white !important;
+}
+
+.fi-sidebar-group-label {
+    color: rgba(107, 107, 129, 1) !important;
+    font-size: 9px !important;
+    letter-spacing: 0.15em !important;
+    text-transform: uppercase !important;
+    font-weight: 800 !important;
+}
+
+/* ==================== SCROLLBAR HIDE ==================== */
+
+@utility scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* ==================== SUB-MODAL OVERLAY ==================== */
+
+@utility animate-modal-in {
+    animation: modal-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(12px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* ==================== GLASSMORPHISM LEVELS ==================== */
+
+@utility glass {
+    background: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@utility glass-light {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px) saturate(130%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@utility glass-dark {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+/* ==================== GRADIENT UTILITIES ==================== */
+
+@utility gradient-radial {
+    background: radial-gradient(circle at center, var(--tw-gradient-stops));
+}
+
+@utility gradient-premium {
+    background: linear-gradient(135deg,
+            hsla(234, 89%, 64%, 0.08) 0%,
+            hsla(262, 83%, 65%, 0.08) 100%);
+}
+
+@utility gradient-mesh {
+    background:
+        radial-gradient(at 20% 30%, hsla(234, 89%, 64%, 0.12) 0px, transparent 50%),
+        radial-gradient(at 80% 70%, hsla(262, 83%, 65%, 0.1) 0px, transparent 50%),
+        radial-gradient(at 50% 50%, hsla(189, 85%, 55%, 0.08) 0px, transparent 50%);
+}
+
+/* ==================== BADGE & PILL UTILITIES ==================== */
+
+@utility badge-premium {
+    @apply px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-[0.1em];
+    background: linear-gradient(135deg,
+            hsla(234, 89%, 64%, 0.12) 0%,
+            hsla(262, 83%, 65%, 0.08) 100%);
+    border: 1px solid hsla(234, 89%, 64%, 0.2);
+    color: hsl(234, 89%, 64%);
+    box-shadow: 0 0 12px -2px hsla(234, 89%, 64%, 0.2);
+}
+
+/* ==================== REFINED ANIMATIONS ==================== */
+
+/* Pulse Glow - Smooth breathing effect */
+@utility animate-pulse-glow {
+    animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 20px -5px hsla(234, 89%, 64%, 0.2);
+        opacity: 1;
+    }
+
+    50% {
+        box-shadow: 0 0 36px -4px hsla(234, 89%, 64%, 0.4);
+        opacity: 0.9;
+    }
+}
+
+/* Fade In - Subtle entrance */
+@utility animate-fade-in {
+    animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fade-in {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+/* Slide In Up - Smooth upward motion */
+@utility animate-slide-in-up {
+    animation: slide-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slide-in-up {
+    0% {
+        transform: translateY(16px);
+        opacity: 0;
+    }
+
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Scale In - Subtle pop */
+@utility animate-scale-in {
+    animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scale-in {
+    0% {
+        transform: scale(0.96);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Counter - Number animation */
+@utility animate-counter {
+    animation: counter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes counter {
+    0% {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.9);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Shimmer - Loading effect */
+@utility animate-shimmer {
+    animation: shimmer 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.03) 50%,
+            rgba(255, 255, 255, 0) 100%);
+    background-size: 200% 100%;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* Aura - Ambient glow pulse */
+@utility animate-aura {
+    animation: aura 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes aura {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0px hsla(234, 89%, 64%, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 0 24px hsla(234, 89%, 64%, 0);
+    }
+}
+
+/* Radar - Scanning effect */
+@utility animate-radar {
+    animation: radar 2.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes radar {
+    0% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+
+    100% {
+        transform: scale(2.8);
+        opacity: 0;
+    }
+}

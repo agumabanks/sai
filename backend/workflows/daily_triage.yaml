@@ -1,0 +1,64 @@
+name: daily_triage
+version: "1.0.0"
+description: Daily system health triage — checks all services, scans logs, and emits summary
+
+args:
+  severity:
+    type: string
+    default: error
+    description: Minimum severity to include in log scan
+
+steps:
+  - id: health_check
+    action: skill
+    description: Run full server health check
+    params:
+      skill: server_health
+      args:
+        metric: all
+
+  - id: app_scan
+    action: skill
+    description: Scan application logs for recent errors
+    params:
+      skill: app_monitor
+      args:
+        severity: "{{ args.severity }}"
+        hours: 24
+    depends_on: [health_check]
+
+  - id: uptime_check
+    action: skill
+    description: Test all webapp endpoints
+    params:
+      skill: web_test
+      args: {}
+    depends_on: [health_check]
+
+  - id: summarise
+    action: llm
+    description: Generate a daily triage summary from collected data
+    params:
+      prompt: |
+        Generate a concise daily system triage report based on these results:
+
+        ## Server Health
+        {{ steps.health_check.output }}
+
+        ## Application Logs
+        {{ steps.app_scan.output }}
+
+        ## Uptime Status
+        {{ steps.uptime_check.output }}
+
+        Format: one-paragraph executive summary, then bullet-point issues, then recommendations.
+      complexity: medium
+    depends_on: [health_check, app_scan, uptime_check]
+
+  - id: notify_admin
+    action: notify
+    description: Send triage report to admin
+    params:
+      channel: web
+      message: "{{ steps.summarise.output }}"
+    depends_on: [summarise]

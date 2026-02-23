@@ -1,0 +1,89 @@
+name: incident_response
+version: "1.0.0"
+description: Automated incident response — detect, assess, auto-heal, notify, escalate
+
+steps:
+  - id: detect
+    action: skill
+    description: Gather current health metrics and error state
+    params:
+      skill: server_health
+      args:
+        metric: all
+        format: json
+
+  - id: assess
+    action: llm
+    description: Analyse the incident and recommend actions
+    params:
+      prompt: |
+        Analyse this server health data and identify any incidents:
+        {{ steps.detect.output }}
+
+        For each issue found, respond ONLY in JSON:
+        {
+          "incidents": [
+            {
+              "severity": "critical|high|medium|low",
+              "component": "what is affected",
+              "summary": "brief description",
+              "auto_healable": true/false,
+              "heal_command": "command if auto-healable"
+            }
+          ],
+          "overall_severity": "critical|high|medium|low|ok"
+        }
+      complexity: high
+    depends_on: [detect]
+
+  - id: auto_heal
+    action: notify
+    description: Present deterministic remediation plan for approval
+    approval: true
+    condition: "steps.assess.output contains 'auto_healable'"
+    params:
+      channel: web
+      message: |
+        Advisory-first remediation plan (approval required).
+        The AI assessment suggested auto-healable issues.
+        
+        Proposed deterministic actions (Sanaa stack):
+        - Restart antigravity-web
+        - Restart antigravity-worker
+        - Restart antigravity-beat
+        - Restart php8.4-fpm (if installed)
+        
+        Assessment:
+        {{ steps.assess.output }}
+    depends_on: [assess]
+
+  - id: remediate_known_services
+    action: shell
+    description: Restart known Sanaa services after approval
+    condition: "steps.assess.output contains 'auto_healable'"
+    params:
+      command: "(systemctl restart antigravity-web antigravity-worker antigravity-beat || true) && (systemctl restart php8.4-fpm || true)"
+    on_failure: skip
+    depends_on: [auto_heal]
+
+  - id: verify
+    action: skill
+    description: Re-check health after healing attempt
+    params:
+      skill: server_health
+      args:
+        metric: all
+    depends_on: [remediate_known_services]
+
+  - id: notify
+    action: notify
+    description: Alert administrator about the incident
+    params:
+      channel: web
+      message: |
+        🚨 Incident Response Report
+        Initial Assessment: {{ steps.assess.output }}
+        Remediation Approval: {{ steps.auto_heal.output }}
+        Healing Attempt: {{ steps.remediate_known_services.output }}
+        Post-heal Verification: {{ steps.verify.output }}
+    depends_on: [verify]
