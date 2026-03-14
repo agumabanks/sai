@@ -740,6 +740,26 @@ class LearningLog(Base, ActiveRecordMixin):
     )
 
 
+# ==================== SCHEDULED POSTS ====================
+
+class ScheduledPost(Base, ActiveRecordMixin):
+    """Scheduled social media posts for multi-platform publishing."""
+    __tablename__ = "scheduled_posts"
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String(50), nullable=False, index=True)  # twitter, linkedin, facebook
+    content = Column(Text, nullable=False)
+    scheduled_time = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), default="scheduled", nullable=False)  # scheduled, published, failed, cancelled
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_scheduled_posts_platform", "platform"),
+        Index("idx_scheduled_posts_status", "status"),
+        Index("idx_scheduled_posts_time", "scheduled_time"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():
