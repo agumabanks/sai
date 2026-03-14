@@ -12,7 +12,9 @@ Environment variables, external dependencies, and setup notes.
 - **Python:** 3.12.3
 - **Working directory:** `/var/www/ai.sanaa.co/backend`
 - **Config:** Pydantic BaseSettings loaded from `/var/www/ai.sanaa.co/backend/.env`
-- **Key env vars:** DATABASE_URL, REDIS_URL, GROQ_API_KEY, OLLAMA_BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, SMTP_HOST, SMTP_PORT, SMTP_USER
+- **Key env vars:** DATABASE_URL, REDIS_URL, GROQ_API_KEY, OLLAMA_BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_PASSWORD_HASH, SMTP_HOST, SMTP_PORT, SMTP_USER
+- **ADMIN_PASSWORD_HASH:** bcrypt hash of admin password; set by `core/utils/migrate_password.py` or auto-computed on startup. If present, login uses bcrypt verification. If absent, falls back to plaintext comparison.
+- **Test dependencies:** pytest, pytest-asyncio, pytest-cov, httpx are installed in venv but NOT in requirements.txt. Must be installed manually after venv recreation.
 
 ## PHP Frontend
 - **Framework:** Laravel 12 + Filament 3.2

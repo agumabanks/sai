@@ -1,0 +1,62 @@
+{
+  "featureId": "foundation-injection-fixes",
+  "reviewedAt": "2026-03-14T05:40:00.000Z",
+  "commitId": "5257672441373d98557568d55e386c10120dd631",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The injection fix implementation is solid and covers all required vectors. Brain.execute_plan() uses create_subprocess_exec with sanitize_command_string(). Healer uses subprocess.run() with list arguments and sanitize_service_name/sanitize_ip_address/sanitize_file_path validators. Workflow runtime _run_shell_step() uses create_subprocess_exec with sanitize_command_string(). SQL injection in system_diagnostics db_query is blocked via regex-based _validate_diagnostic_query() plus SQLAlchemy text() with bind parameters. 73 comprehensive pytest tests cover all injection vectors. CRITICAL NOTE: The handoff (session 99d444dd) references commit c968084 (bcrypt password hashing), NOT the actual injection fixes commit 5257672. The handoff summary describes bcrypt work, not injection fixes. Despite this metadata mismatch, the actual code changes in commit 5257672 are correct and complete.",
+    "issues": [
+      {
+        "file": "backend/core/utils/sanitize.py",
+        "line": 148,
+        "severity": "non_blocking",
+        "description": "sanitize_file_path() checks for shell metacharacters and null bytes but does NOT check for path traversal sequences ('..', '..'). While currently only called on paths from 'find' command output (not user input), this function's name implies general-purpose validation. A '../' check would harden it for future reuse."
+      },
+      {
+        "file": "backend/core/utils/sanitize.py",
+        "line": 34,
+        "severity": "non_blocking",
+        "description": "INJECTION_PATTERNS for output/input redirection only catch '> /' and '< /' (absolute paths). Redirection to relative paths like '> tmpfile' or '>> file' would not be caught. Acceptable for current use (commands are executed with shell=False so shell redirection wouldn't work anyway), but the pattern list suggests broader protection than it actually provides."
+      },
+      {
+        "file": "backend/skills/system_diagnostics/handler.py",
+        "line": 18,
+        "severity": "non_blocking",
+        "description": "SQL validation uses regex pattern matching (_DANGEROUS_SQL_PATTERNS) rather than a proper SQL parser. This means legitimate column/table names containing SQL keywords (e.g., 'sleep_duration', 'execute_count') would be falsely rejected. Acceptable trade-off for a diagnostic tool, but worth documenting."
+      },
+      {
+        "file": "backend/core/agents/server_health.py",
+        "line": 62,
+        "severity": "non_blocking",
+        "description": "server_health.py still uses shell=True with f-string service name (out of scope for this feature per description, but represents a remaining injection vector in the codebase)."
+      },
+      {
+        "file": "backend/core/agents/watchdog.py",
+        "line": 713,
+        "severity": "non_blocking",
+        "description": "watchdog.py has 6 remaining shell=True subprocess calls (lines 713, 739, 764, 796, 812, 829). Out of scope per feature description which only targets engine.py, healer.py, workflow runtime, and system_diagnostics, but noted as remaining attack surface."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md documents 'NEVER use subprocess with shell=True for user input', which is good. However, server_health.py and watchdog.py still have shell=True calls that were not fixed in this feature. AGENTS.md should either document these as known exceptions or create a follow-up feature to fix them.",
+      "evidence": "backend/core/agents/server_health.py:62 uses shell=True. backend/core/agents/watchdog.py has 6 shell=True calls at lines 713, 739, 764, 796, 812, 829. These were documented in VALIDATION_CONTRACT_FOUNDATION.md (VAL-FOUND-002b, VAL-FOUND-002c) but not addressed by this feature."
+    },
+    {
+      "area": "skills",
+      "observation": "The worker's handoff says 'the feature was already implemented by a previous worker in commit c968084, so I verified and enhanced the existing implementation rather than starting from scratch.' This is inaccurate — commit c968084 is the bcrypt password hashing commit, NOT the injection fix commit. The worker appears to have confused features or the handoff was generated for the wrong feature. The actual injection fix commit is 5257672 which was made AFTER the handoff timestamp (handoff at 03:43 UTC, injection commit at 03:50 UTC).",
+      "evidence": "Handoff file: 2026-03-14T03-43-53-422Z__foundation-injection-fixes__99d444dd.json references commitId c9680845 (bcrypt). Actual injection fix commit is 5257672. Handoff salientSummary mentions 'Bcrypt password hashing' not injection fixes. Git log shows c968084 at 04:41+01 and 5257672 at 04:50+01."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The sanitize.py module establishes important security patterns (sanitize_service_name, sanitize_ip_address, sanitize_file_path, sanitize_command_string) that future workers need to know about when writing subprocess calls. This pattern is not documented in .factory/library/ as reusable security utilities.",
+      "evidence": "backend/core/utils/sanitize.py provides 6 validation functions. No mention of these in .factory/library/architecture.md or environment.md."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS with caveats. The injection fix implementation in commit 5257672 is well-engineered: Brain.execute_plan() correctly uses create_subprocess_exec + sanitize_command_string(); healer.py replaces all shell=True calls with list-based subprocess + input validators; workflow runtime uses the same pattern; system_diagnostics uses regex-based SQL validation + SQLAlchemy text() with bind parameters. 73 pytest tests provide comprehensive coverage. Non-blocking issues include: sanitize_file_path lacking path traversal checks, redirection patterns being incomplete (mitigated by shell=False), SQL validation being regex-based (acceptable trade-off), and server_health.py/watchdog.py retaining shell=True (out of scope). The most notable process issue is that the handoff metadata is completely wrong — it describes bcrypt password hashing (commit c968084) instead of the actual injection fixes (commit 5257672). The code itself is correct despite the broken handoff."
+}

@@ -1,0 +1,44 @@
+{
+  "featureId": "foundation-pytest-infra",
+  "reviewedAt": "2026-03-14T05:40:00.000Z",
+  "commitId": "f419145",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation fully meets the feature requirements. Commit f419145 adds pytest.ini, tests/__init__.py, tests/conftest.py, and tests/test_health.py (4 files, 118 insertions). pytest 8.4.2, pytest-asyncio 0.26.0, and pytest-cov 7.0.0 are installed in /opt/antigravity/venv. conftest.py correctly configures sys.path, sets APP_ENV=testing, provides a session-scoped FastAPI app fixture, an async httpx client fixture using ASGITransport, and a database session fixture with rollback. test_health.py contains 5 tests verifying GET /api/health returns 200 with the expected JSON structure (status, service, version, channels). The health endpoint is defined at backend/core/routes/status.py:21. All 5 tests pass.",
+    "issues": [
+      {
+        "file": "backend/requirements.txt",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "pytest, pytest-asyncio, and pytest-cov were installed via pip but NOT added to requirements.txt (or a separate test-requirements.txt / dev-requirements.txt). If the venv is recreated from requirements.txt, these packages will be missing. This is a reproducibility gap."
+      },
+      {
+        "file": "backend/tests/conftest.py",
+        "line": 56,
+        "severity": "non_blocking",
+        "description": "The db_session fixture connects to the real production database (via settings.database_url_async) and relies on rollback for isolation. This works but is fragile — a test that accidentally commits or a crash mid-test could mutate production data. A dedicated test database or SQLite override would be safer, but this is acceptable for a foundation feature."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Test dependencies (pytest, pytest-asyncio, pytest-cov, httpx) are installed in the venv but not tracked in any requirements file. AGENTS.md doesn't mention a test-requirements.txt or how test dependencies should be managed. Future workers may not know to install them.",
+      "evidence": "rg pytest backend/requirements.txt returns no matches. Commit f419145 installs packages via pip but doesn't update requirements.txt."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill prescribes a Red-Green-Refactor (TDD) workflow: 'Write Tests FIRST (Red Phase)' then 'Implement the Feature (Green Phase)'. For infrastructure-setup features like setting up pytest itself, TDD doesn't apply since there's nothing to test against before the infra exists. The worker noted this in skillFeedback.suggestedChanges. The skill could benefit from a note about infrastructure/setup features that don't follow the TDD cycle.",
+      "evidence": "Handoff skillFeedback.suggestedChanges: 'The backend-worker skill says to write tests first (Red Phase) then implement. For infrastructure-setup features like pytest-infra that are already committed, the procedure doesn't quite fit — could add a note about verifying pre-existing implementations.'"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The conftest.py sys.path manipulation pattern (inserting BACKEND_DIR into sys.path so 'core.*' imports resolve) is a codebase-specific quirk that future test authors need to know. It's baked into conftest.py so it works automatically, but .factory/library/ doesn't document why this is needed or the project's import structure.",
+      "evidence": "conftest.py lines 11-14: BACKEND_DIR = Path(__file__).resolve().parent.parent; sys.path.insert(0, str(BACKEND_DIR))"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The foundation-pytest-infra feature is correctly implemented in commit f419145. All required components are present: pytest/pytest-asyncio/pytest-cov installed, tests/ directory with __init__.py and conftest.py (async fixtures, httpx TestClient, DB session), test_health.py with 5 passing tests for GET /api/health, and pytest.ini with asyncio_mode=auto. Two non-blocking issues noted: (1) test dependencies not tracked in requirements.txt, and (2) db_session fixture uses the real database rather than a test-specific one. Neither blocks the feature."
+}

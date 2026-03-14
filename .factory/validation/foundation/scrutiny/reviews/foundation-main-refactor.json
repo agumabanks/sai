@@ -1,0 +1,67 @@
+{
+  "featureId": "foundation-main-refactor",
+  "reviewedAt": "2026-03-14T05:35:00.000Z",
+  "commitId": "3c3d5a7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The worker session b89cb703 was assigned feature 'foundation-main-refactor' (refactor main.py into modular APIRouter files) but instead implemented a completely different feature: 'shared Brain factory for cross-agent memory sharing'. The commit 3c3d5a7 contains only Brain singleton factory changes and agent updates — zero route refactoring. Meanwhile, a backend/core/routes/ directory with 13 route modules DOES exist in the working tree but is entirely UNTRACKED (never committed). The main.py modifications reducing it from 2312 to 305 lines are UNSTAGED. The handoff describes the shared Brain work, not the route refactoring. No test_routes.py file exists despite the feature requiring 'Write a test that hits every major endpoint group.' The actual uncommitted refactoring code is architecturally sound — all 80 original endpoints are present, the deps.py shared-state pattern is clean, and the module access via 'deps.' prefix correctly avoids Python import rebinding issues — but none of this work was committed.",
+    "issues": [
+      {
+        "file": "backend/core/routes/",
+        "line": 0,
+        "severity": "blocking",
+        "description": "The entire routes/ directory is UNTRACKED in git. 'git status' shows 'Untracked files: backend/core/routes/'. The commit 3c3d5a7 referenced in the handoff does not contain any route files — it only contains shared Brain factory changes. The route refactoring was never committed."
+      },
+      {
+        "file": "backend/core/main.py",
+        "line": 0,
+        "severity": "blocking",
+        "description": "The main.py modifications (reducing from 2312 to 305 lines with router imports) are UNSTAGED. 'git diff --stat' shows '2177 ++--' but these changes were never added or committed. The committed version of main.py is still the original 2312-line monolith."
+      },
+      {
+        "file": "backend/tests/test_routes.py",
+        "line": 0,
+        "severity": "blocking",
+        "description": "No test_routes.py or equivalent endpoint test file exists. The feature specification explicitly requires: 'Write a test that hits every major endpoint group.' The handoff's test file (test_agent_brain.py) tests Brain singleton sharing, not route endpoints."
+      },
+      {
+        "file": "backend/core/routes/intelligence.py",
+        "line": 81,
+        "severity": "non_blocking",
+        "description": "list_briefings() and get_briefing() call require_auth(request) directly instead of using Depends(require_auth). While functional, this bypasses FastAPI's dependency injection and is inconsistent with all other route handlers that use 'user: dict = Depends(require_auth)'."
+      },
+      {
+        "file": "backend/core/main.py",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "Working-tree main.py is 305 lines. The feature spec expects <200 lines with verification threshold of <300 lines. At 305 lines it slightly exceeds the verification target, though the content (lifespan, middleware, startup helpers, agent instantiation) justifies the length."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker implemented a completely different feature than assigned. Session b89cb703 was assigned 'foundation-main-refactor' but implemented 'shared Brain factory for cross-agent memory sharing'. The transcript skeleton confirms the worker planned and executed Brain singleton work, not route refactoring. This is a feature assignment/identity confusion issue — not a convention gap per se, but a process failure that AGENTS.md or skill procedures could address by requiring workers to verify their assigned feature ID against their planned implementation before starting.",
+      "evidence": "Transcript shows worker's plan: '1. Create a shared Brain factory in backend/core/brain/engine.py - a get_shared_brain() function, 2. Update all agents to use get_shared_brain()...'. Commit 3c3d5a7 message: 'Implement shared Brain factory for cross-agent memory sharing'. Feature description: 'Refactor main.py (2200+ lines) into modular APIRouter files.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The route refactoring code in the working tree uses two different auth patterns: most routes use 'user: dict = Depends(require_auth)' as a function parameter, but intelligence.py list_briefings and get_briefing call require_auth(request) directly. AGENTS.md should specify that all protected endpoints must use FastAPI Depends() for auth, not direct function calls.",
+      "evidence": "backend/core/routes/intelligence.py:81 — 'user = require_auth(request)' vs backend/core/routes/skills.py:48 — 'user: dict = Depends(require_auth)'"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The route refactoring introduces a 'shared state deps module' pattern (core/routes/deps.py) where singletons are wired at startup via init_shared_state() and accessed through the deps module reference. This is a significant architectural pattern that should be documented in .factory/library/architecture.md since future workers adding routes need to know to import deps as a module and access objects via 'deps.brain' (not 'from deps import brain') to avoid Python import rebinding issues.",
+      "evidence": "backend/core/routes/deps.py init_shared_state() function, and all route files using 'from core.routes import deps' + 'deps.brain' pattern"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The .factory/library/architecture.md still says 'Entry point: backend/core/main.py (currently 2200+ lines, being refactored into APIRouter modules)'. Once the refactoring is properly committed, this should be updated to reflect the new routes/ directory structure.",
+      "evidence": ".factory/library/architecture.md line: '**Entry point:** `backend/core/main.py` (currently 2200+ lines, being refactored into APIRouter modules)'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — Worker session b89cb703 implemented the WRONG FEATURE. Was assigned 'foundation-main-refactor' (refactor main.py into modular APIRouter files) but instead implemented 'shared Brain factory for cross-agent memory sharing' (commit 3c3d5a7). The actual route refactoring code EXISTS in the working tree as untracked/unstaged files (routes/ directory with 13 modules, modified main.py reduced from 2312 to 305 lines, all 80 endpoints preserved) but was never committed. No endpoint test file was created. The uncommitted refactoring code quality is solid — clean module separation, proper deps.py shared state pattern, full endpoint parity — but the feature cannot pass review because: (1) changes are not committed, (2) the handoff/commit are for a different feature, and (3) the required test file is missing."
+}

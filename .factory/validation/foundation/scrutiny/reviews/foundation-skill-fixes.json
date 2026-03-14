@@ -1,0 +1,56 @@
+{
+  "featureId": "foundation-skill-fixes",
+  "reviewedAt": "2026-03-14T06:15:00.000Z",
+  "commitId": "05e6ce3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that fixes all broken skills and adds comprehensive test coverage. The worker fixed the security scanner's false positive on re.compile() with a well-crafted lookbehind regex, added a permission-aware scanning system (PERMISSION_ALLOWLIST) to downgrade critical findings for skills with declared permissions, replaced ssl_monitor's shell=True subprocess with Python's ssl module, added missing manifests and handlers for github/tmux_runner/system_diagnostics/test_dummy, and wrote 16 tests covering dependency imports, skill discovery, skill loading, and scanner permissions. All 33 skills load without errors. The regex fix was verified to correctly match standalone eval/exec/compile while ignoring qualified calls like re.compile, ast.compile, self.eval, etc.",
+    "issues": [
+      {
+        "file": "backend/skills/github/manifest.yaml",
+        "line": 14,
+        "severity": "non_blocking",
+        "description": "Dict-style parameter definitions (key: {type, description, ...}) are not parsed by parse_manifest(), which only handles list-style (- name: ...). The github and tmux_runner manifests use dict-style, so their parameter metadata won't be available for documentation/API responses. However, this is a pre-existing codebase inconsistency — 13 other existing skills also use dict-style parameters — and does not affect skill loading or execution."
+      },
+      {
+        "file": "backend/core/skills/loader.py",
+        "line": 102,
+        "severity": "non_blocking",
+        "description": "The _check_gating method re-reads and re-parses the raw YAML manifest to check the 'requires' field, even though SkillManifest was already parsed from the same file. Adding a 'requires' field to SkillManifest dataclass would avoid this redundant I/O. Minor efficiency concern, not blocking."
+      },
+      {
+        "file": "backend/core/skills/loader.py",
+        "line": 65,
+        "severity": "non_blocking",
+        "description": "Imports (yaml, shutil) inside method bodies rather than at module level. This is a minor style deviation — yaml is already imported at module level in manifest.py but not in loader.py. Not blocking."
+      },
+      {
+        "file": "backend/skills/github/handler.py",
+        "line": 14,
+        "severity": "non_blocking",
+        "description": "Hardcoded path '/var/www/ai.sanaa.co/backend' as target_dir. This is the correct deployment path for this system but could use a config-based approach (e.g., settings.BASE_DIR) for consistency."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The new permission-aware scanning system (PERMISSION_ALLOWLIST in scanner.py) introduces an important convention: skills can declare permissions like 'shell' in their manifest to bypass scanner rules for subprocess usage. This new pattern is not documented in AGENTS.md, which currently says 'NEVER use subprocess with shell=True for user input' but doesn't mention the permission-based exception mechanism.",
+      "evidence": "backend/core/skills/scanner.py:119-124 defines PERMISSION_ALLOWLIST mapping. Skills like github and tmux_runner declare 'shell' permission in manifest.yaml, which causes scanner to downgrade subprocess findings from critical to warn."
+    },
+    {
+      "area": "conventions",
+      "observation": "The gating mechanism (requires.env, requires.bins in manifest.yaml) is a new feature for skill loading that determines whether a skill should be skipped based on missing env vars or binaries. This convention for conditional skill loading is undocumented.",
+      "evidence": "backend/core/skills/loader.py:60-76 _check_gating method. No skills currently use this feature, but it's wired into the load path."
+    },
+    {
+      "area": "conventions",
+      "observation": "There's a split convention for manifest.yaml parameter formats — some skills use list-style (- name: X, type: Y) and others use dict-style (X: {type: Y}). The parse_manifest function only handles list-style, silently ignoring dict-style parameters. 13 out of 33 skills use dict-style. The worker created 2 new dict-style skills (github, tmux_runner) and 2 list-style (ssl_monitor, test_dummy), perpetuating the inconsistency.",
+      "evidence": "backend/core/skills/manifest.py:93-103 only handles list params. github/manifest.yaml and tmux_runner/manifest.yaml use dict-style. Pre-existing skills like code_quality, healthcheck, imap_reader also use dict-style."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The implementation fully addresses all feature requirements: test_dummy skill is clean (no undefined 'foo'), all three dependencies are in requirements.txt, all 33 skills load without errors, scanner false positives are fixed, and 16 comprehensive tests were added. The scanner's re.compile regex fix is correct (verified with edge case testing). The permission-aware scanning system is a thoughtful design that cleanly separates privilege from policy. Non-blocking issues include dict/list parameter format inconsistency (pre-existing), hardcoded paths, and lazy imports. No blocking issues found."
+}

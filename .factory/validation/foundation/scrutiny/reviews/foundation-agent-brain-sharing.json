@@ -1,0 +1,61 @@
+{
+  "featureId": "foundation-agent-brain-sharing",
+  "reviewedAt": "2026-03-14T05:30:00.000Z",
+  "commitId": "3c3d5a7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The shared Brain factory pattern is correctly implemented. `get_shared_brain()` is a module-level singleton in `core/brain/engine.py` with `reset_shared_brain()` for testing. All 7 agents (ServerHealthAgent, EmailInboxAgent, NewsAgent, ReflectionAgent, ReportAgent, WisdomAgent, AppMonitorAgent) use `brain or get_shared_brain()` in their constructors, eliminating isolated Brain instances. 18 well-structured tests in `test_agent_brain.py` verify singleton behavior, agent identity, cross-agent memory store/retrieve, and custom brain injection. The test_embeddings.py async teardown fix (one-shot engine in `_cleanup()`, removed teardown dispose in `fresh_db`) resolves the asyncpg InterfaceError. Full suite of 195 tests passes. The feature meets all 5 expectedBehavior criteria and both verificationSteps.",
+    "issues": [
+      {
+        "file": "backend/core/agents/reflection_agent.py",
+        "line": 116,
+        "severity": "non_blocking",
+        "description": "Undefined reference `approval_manager` — if LLM returns `suggested_skills` in its JSON, this will raise `NameError`. The variable is never imported or defined. Low risk since the LLM prompt doesn't request `suggested_skills`, but the code path exists and would crash at runtime."
+      },
+      {
+        "file": "backend/core/main.py",
+        "line": 68,
+        "severity": "non_blocking",
+        "description": "The main API module still creates `brain = Brain()` directly instead of using `get_shared_brain()`. This means the API's Brain instance is separate from the agents' shared Brain. Memories stored via the API (e.g., conversation context) are technically in the same DB but the Brain objects don't share lazy-loaded MemoryManager/ContextAssembler instances. Similarly, `core/intelligence/scanner.py:140` and `core/intelligence/briefing.py:16` still use `Brain()`. These are not agent files per the feature scope, but represent remaining context isolation."
+      },
+      {
+        "file": "backend/tests/test_agent_brain.py",
+        "line": 38,
+        "severity": "non_blocking",
+        "description": "The `fresh_db` fixture in test_agent_brain.py disposes the engine in BOTH setup and teardown (`await engine.dispose()` before and after yield). The test_embeddings.py fix intentionally removed teardown dispose to prevent asyncpg InterfaceError. This inconsistency hasn't caused failures yet (195 pass) likely due to test ordering, but could be fragile. Consider aligning the pattern."
+      },
+      {
+        "file": "backend/core/agents/news_agent.py",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "Scope creep: commit 3c3d5a7 includes a major rewrite of NewsAgent (keyword filtering replacing LLM batch scoring, WhatsApp delivery, HTML template rewrite) and EmailInboxAgent (RFC822 parsing, LLM categorization, check_and_log implementation), plus an entirely new ReflectionAgent and disk prediction in ServerHealthAgent. These go well beyond the brain-sharing feature scope. Not blocking — the core feature is correct — but bundling unrelated changes in one commit makes review and rollback harder."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md documents Brain access as `from core.brain.engine import Brain` but agents now use `from core.brain import get_shared_brain`. The new convention for agent Brain access (`self.brain = brain or get_shared_brain()`) should be documented in AGENTS.md under Coding Conventions > Python Backend.",
+      "evidence": "AGENTS.md line 'Brain engine: Access via from core.brain.engine import Brain' vs actual imports in all 7 agent files (e.g., app_monitor.py:9, server_health.py:8)"
+    },
+    {
+      "area": "conventions",
+      "observation": "The pattern of accepting an optional `brain` parameter in agent constructors for testability (`def __init__(self, brain=None)`) is a new project convention applied across all 7 agents but not documented.",
+      "evidence": "All agent constructors: app_monitor.py:37, server_health.py:39, email_agent.py:17, news_agent.py:70, reflection_agent.py:17, report_agent.py:13, wisdom.py:17"
+    },
+    {
+      "area": "skills",
+      "observation": "Worker deviated from 'Write Tests FIRST (Red Phase)' skill instruction, writing implementation before tests. The skillFeedback from the b89cb703 session acknowledged following procedure, but the a68e257b session's feedback noted this deviation was practical for integration tests. The skill procedure could note that integration tests (hitting live DB + external services) may justify implementation-first.",
+      "evidence": "Session a68e257b skillFeedback.suggestedChanges: 'The backend-worker skill says Write Tests FIRST but for integration tests hitting a live database + Ollama, I found it more practical to first understand and fix the code, then write tests.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The asyncpg-safe fixture pattern for pytest (one-shot engine in cleanup, no teardown dispose) is critical knowledge for anyone writing async DB tests but is not documented in AGENTS.md or library. Two different patterns exist across test files.",
+      "evidence": "test_embeddings.py uses one-shot engine in _cleanup() with no teardown dispose; test_agent_brain.py uses module-level engine dispose in both setup and teardown. Comment in test_embeddings.py:265-270 explains the rationale."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The shared Brain factory is correctly implemented as a module-level singleton in core/brain/engine.py. All 7 agents are updated to use get_shared_brain() with optional custom brain injection for testing. 18 new tests comprehensively verify singleton behavior, cross-agent memory sharing (store by AgentA, retrieve by AgentB), and context assembler sharing. The test_embeddings.py async fixture teardown is fixed. Full test suite (195 tests) passes cleanly. Non-blocking issues: undefined `approval_manager` in new ReflectionAgent, remaining Brain() calls in non-agent modules (main.py, scanner.py, briefing.py), inconsistent fresh_db fixture patterns, and significant scope creep in the commit (email/news agent rewrites, new ReflectionAgent, disk alerts)."
+}

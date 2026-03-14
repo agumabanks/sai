@@ -1,0 +1,62 @@
+{
+  "featureId": "foundation-vector-embeddings",
+  "reviewedAt": "2026-03-14T06:15:00.000Z",
+  "commitId": "635d1a3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "CRITICAL: Worker implemented an entirely wrong feature. The assigned feature 'foundation-vector-embeddings' required fixing the vector embedding pipeline (pgvector similarity search, Ollama nomic-embed-text, NullEmbeddings fallback, embedding tests). Instead, the worker implemented Fernet encryption for API keys stored in system_knowledge (core/utils/crypto.py, modified database.py get_pref/set_pref/upsert, startup migration, 26 crypto tests). Zero embedding-related files were touched in commit 635d1a3. None of the 5 expectedBehavior items were addressed. Neither of the 2 verificationSteps were executed. The handoff explicitly states 'Implemented Fernet symmetric encryption for API keys' confirming the wrong feature was built.",
+    "issues": [
+      {
+        "file": "backend/core/memory/context.py",
+        "line": 0,
+        "severity": "blocking",
+        "description": "File was never modified. The feature description explicitly states 'Update the embedding provider in core/memory/context.py to correctly generate embeddings' — this was not done."
+      },
+      {
+        "file": "backend/core/memory/embeddings.py",
+        "line": 0,
+        "severity": "blocking",
+        "description": "No embedding provider changes were made in this commit. The feature required fixing the embedding pipeline (Ollama nomic-embed-text, vector dimensions, NullEmbeddings fallback). None of this was implemented."
+      },
+      {
+        "file": "backend/tests/test_embeddings.py",
+        "line": 0,
+        "severity": "blocking",
+        "description": "No embedding tests were created. The feature required 'Write tests' for storing/retrieving memories with embeddings and cosine similarity search. Instead, test_crypto.py was written for the wrong feature."
+      },
+      {
+        "file": "backend/core/utils/crypto.py",
+        "line": 1,
+        "severity": "blocking",
+        "description": "This entire file implements API key encryption — a completely different feature from vector embeddings. The worker appears to have confused the feature assignment or worked on the wrong task."
+      },
+      {
+        "file": "backend/core/database.py",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "The commit includes numerous unrelated schema additions beyond the crypto work: PendingApproval table, SkillMetrics table, Alert.create() override with email notification, LLMUsage.get_since(), Command.response column. These suggest the worker committed accumulated unstaged changes from other sessions alongside their own work, indicating poor git hygiene."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill procedure Step 1 says 'Read the feature description, preconditions, expectedBehavior, and verificationSteps carefully'. The transcript skeleton shows the worker never examined embedding-related code (context.py, embeddings.py) and instead immediately searched for 'api_key', 'system_knowledge', 'brain.config' patterns. The worker either did not read the feature description or confused it with a different feature. The skill procedure is correct but was not followed.",
+      "evidence": "Transcript skeleton shows searches for 'api_key|API_KEY|api.key', 'system_knowledge|SystemKnowledge', 'brain.config|brain_config|BrainConfig' — all encryption-related patterns. No searches for 'embed', 'vector', 'pgvector', 'nomic', 'similarity', or 'NullEmbeddings'. Handoff salientSummary explicitly says 'Implemented Fernet symmetric encryption for API keys'."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker committed unrelated accumulated changes from other sessions in their commit. The git diff for 635d1a3 includes PendingApproval model, SkillMetrics model, Alert.create() override, LLMUsage.get_since(), and Command.response column — none of which were part of the crypto implementation or the assigned feature. AGENTS.md does not document git commit hygiene expectations (e.g., only commit changes related to the assigned feature, use 'git add' selectively).",
+      "evidence": "git show 635d1a3 --stat shows 638 insertions across 4 files, but only ~200 lines are crypto-related. The rest are unrelated model additions visible in the diff."
+    },
+    {
+      "area": "conventions",
+      "observation": "The feature's skillFeedback.followedProcedure is marked 'true' in the handoff, but the worker clearly did not follow the procedure — they implemented the wrong feature entirely. This indicates the worker's self-assessment in the handoff is unreliable.",
+      "evidence": "Handoff skillFeedback: { followedProcedure: true, deviations: [], suggestedChanges: [] } — despite implementing API key encryption instead of vector embeddings."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — The worker implemented a completely different feature (Fernet API key encryption) instead of the assigned vector embedding pipeline fix. Commit 635d1a3 contains zero embedding-related changes: no modifications to context.py/embeddings.py, no embedding tests, no Ollama model checks, no pgvector similarity work. All 5 expectedBehavior items are unaddressed. The transcript confirms the worker never examined embedding code. Note: commit 6c9de0d (by a different/later session) appears to contain the actual embedding pipeline fix, but that is not the work under review here."
+}
