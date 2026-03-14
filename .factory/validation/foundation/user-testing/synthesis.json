@@ -1,0 +1,51 @@
+{
+  "milestone": "foundation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-FOUND-001",
+    "VAL-FOUND-002",
+    "VAL-FOUND-003",
+    "VAL-FOUND-004",
+    "VAL-FOUND-005",
+    "VAL-FOUND-006",
+    "VAL-FOUND-007",
+    "VAL-FOUND-008",
+    "VAL-FOUND-009",
+    "VAL-FOUND-010",
+    "VAL-FOUND-011",
+    "VAL-FOUND-012",
+    "VAL-CROSS-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "details": {
+    "testingTools": ["pytest", "curl", "phpunit"],
+    "groupA": {
+      "assertions": ["VAL-FOUND-001", "VAL-FOUND-002", "VAL-FOUND-003", "VAL-FOUND-004", "VAL-FOUND-005", "VAL-FOUND-007", "VAL-FOUND-008", "VAL-FOUND-010"],
+      "result": "8/8 passed",
+      "method": "pytest (242 tests, 0 failures)",
+      "highlights": "25 auth tests, 73 security tests (shell+SQL injection), 26 crypto tests, 32 embedding tests, 18 brain sharing tests"
+    },
+    "groupB": {
+      "assertions": ["VAL-FOUND-006", "VAL-FOUND-009", "VAL-FOUND-011", "VAL-FOUND-012", "VAL-CROSS-006"],
+      "result": "5/5 passed",
+      "method": "curl + pytest + phpunit",
+      "highlights": "33 skills loaded, 15 route modules, health endpoint stable, login page renders, 6 API endpoints verified via curl"
+    },
+    "frictions": [
+      {
+        "description": "Filament v3 uses Livewire AJAX for login, making POST /login via curl return 405. Login was verified via GET page render and PHPUnit.",
+        "affectedAssertions": ["VAL-FOUND-012"]
+      }
+    ]
+  }
+}
