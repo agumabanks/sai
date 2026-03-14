@@ -1,0 +1,149 @@
+{
+  "groupId": "api-routes",
+  "testedAt": "2026-03-14T05:34:00Z",
+  "isolation": {
+    "backendApi": "http://127.0.0.1:8101",
+    "apiKey": "$MAC_CLIENT_API_KEY",
+    "pythonVenv": "/opt/antigravity/venv/bin/python3",
+    "backendDir": "/var/www/ai.sanaa.co/backend"
+  },
+  "toolsUsed": ["curl", "pytest"],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-009",
+      "title": "API routes modularized",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "List /var/www/ai.sanaa.co/backend/core/routes/ directory",
+          "expected": "Separate APIRouter module files exist (auth.py, skills.py, commands.py, etc.)",
+          "observed": "Directory contains 15 route modules: alerts.py, auth.py, channels.py, commands.py, config.py, deps.py, devices.py, intelligence.py, sellers.py, sessions.py, skills.py, status.py, watchdog.py, workflows.py, __init__.py"
+        },
+        {
+          "action": "Run pytest tests/test_routes.py (47 tests covering route modularization)",
+          "expected": "All route structure and endpoint tests pass",
+          "observed": "47/47 tests passed including TestRouteModuleStructure (routes_directory_exists, all_router_modules_importable, main_py_is_under_300_lines, deps_shared_state_initialized) and TestAllRoutesRegistered (test_all_routes_registered, test_route_count_unchanged)"
+        },
+        {
+          "action": "curl GET /api/health (no auth)",
+          "expected": "200 with valid JSON response",
+          "observed": "HTTP 200 — {\"status\":\"ok\",\"service\":\"Sanaa AI\",\"version\":\"2.2.0\",\"channels\":[\"web\",\"telegram\"]}"
+        },
+        {
+          "action": "curl GET /api/skills (with auth)",
+          "expected": "200 with skills listing",
+          "observed": "HTTP 200 — {\"count\":33,\"skills\":[...],\"tool_policy\":{...},\"effective_provider\":\"groq\"}"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API testing)",
+        "network": "GET /api/health -> 200, GET /api/skills -> 200",
+        "files": [
+          "foundation/api-routes/route-modularization-ls.txt",
+          "foundation/api-routes/pytest-routes-47-pass.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-011",
+      "title": "Health endpoint stable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl -sf http://127.0.0.1:8101/api/health",
+          "expected": "200 JSON with status, service, version, and channels fields",
+          "observed": "HTTP 200 — {\"status\":\"ok\",\"service\":\"Sanaa AI\",\"version\":\"2.2.0\",\"channels\":[\"web\",\"telegram\"]} — all four required fields present"
+        },
+        {
+          "action": "Run pytest test_health_returns_200 and test_health_response_shape",
+          "expected": "Both tests pass",
+          "observed": "Both tests passed (TestHealthEndpointPostRefactor::test_health_returns_200 PASSED, TestHealthEndpointPostRefactor::test_health_response_shape PASSED)"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API testing)",
+        "network": "GET /api/health -> 200 JSON {status, service, version, channels}",
+        "files": [
+          "foundation/api-routes/curl-all-routes.txt",
+          "foundation/api-routes/pytest-routes-47-pass.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "All routes work after main.py refactor",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "curl GET /api/health (no auth)",
+          "expected": "200",
+          "observed": "HTTP 200"
+        },
+        {
+          "action": "curl GET /api/skills (with auth)",
+          "expected": "200 with skills list",
+          "observed": "HTTP 200 — 33 skills returned"
+        },
+        {
+          "action": "curl GET /api/alerts (with auth)",
+          "expected": "200 with alerts array",
+          "observed": "HTTP 200 — array of alert objects returned"
+        },
+        {
+          "action": "curl GET /api/watchdog/events (with auth)",
+          "expected": "200 or valid response",
+          "observed": "HTTP 200 — empty array (no events currently)"
+        },
+        {
+          "action": "curl GET /api/intelligence/latest-signals (with auth)",
+          "expected": "200 with signals",
+          "observed": "HTTP 200 — array of 10 signal objects returned"
+        },
+        {
+          "action": "curl GET /api/workflows (with auth)",
+          "expected": "200 with workflows",
+          "observed": "HTTP 200 — {\"count\":8,\"workflows\":[...]} with 8 workflows"
+        },
+        {
+          "action": "curl GET /api/devices (with auth)",
+          "expected": "200 or valid response",
+          "observed": "HTTP 200 — empty array (no devices registered)"
+        },
+        {
+          "action": "Run pytest tests/test_routes.py::TestAllRoutesRegistered",
+          "expected": "All route registration tests pass (no 404s introduced)",
+          "observed": "test_all_routes_registered PASSED, test_route_count_unchanged PASSED"
+        },
+        {
+          "action": "Run full pytest tests/test_routes.py (47 tests)",
+          "expected": "All endpoint tests pass",
+          "observed": "47/47 passed — covers auth, commands, skills, status, channels, intelligence, devices, alerts, sessions, config, workflows, watchdog, sellers endpoints"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API testing)",
+        "network": "GET /api/health->200, GET /api/skills->200, GET /api/alerts->200, GET /api/watchdog/events->200, GET /api/intelligence/latest-signals->200, GET /api/workflows->200, GET /api/devices->200",
+        "files": [
+          "foundation/api-routes/curl-all-routes.txt",
+          "foundation/api-routes/pytest-routes-47-pass.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The task instructions listed /api/intelligence/signals as a test endpoint, but the actual route is /api/intelligence/latest-signals. The /api/intelligence/signals path returns 404, which is expected since it was never a real route.",
+      "resolved": true,
+      "resolution": "Tested the correct route /api/intelligence/latest-signals which returned 200 with valid data. This is not a regression — the route name was always latest-signals per the route definition.",
+      "affectedAssertions": ["VAL-CROSS-006"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed. Route modularization confirmed with 15 APIRouter modules in core/routes/. Health endpoint returns 200 with all required fields (status, service, version, channels). All 7 tested API endpoints return 200. 47/47 pytest route tests pass covering all endpoint domains."
+}

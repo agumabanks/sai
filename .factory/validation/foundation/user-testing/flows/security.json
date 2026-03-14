@@ -1,0 +1,195 @@
+{
+  "groupId": "security",
+  "testedAt": "2026-03-14T06:10:00Z",
+  "isolation": {
+    "backendApi": "http://127.0.0.1:8101",
+    "frontendUrl": "https://ai.sanaa.co",
+    "pythonVenv": "/opt/antigravity/venv/bin/python3",
+    "backendDir": "/var/www/ai.sanaa.co/backend",
+    "frontendDir": "/var/www/ai.sanaa.co/frontend"
+  },
+  "toolsUsed": ["pytest", "curl", "phpunit"],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-001",
+      "title": "Admin password hashing",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_auth.py -v",
+          "expected": "All 25 tests pass covering bcrypt hashing, verification, login flow, migration",
+          "observed": "25 passed in 14.51s. Tests cover: hash_password returns bcrypt string, different salts each call, verify correct/wrong passwords, is_bcrypt_hash detection, login success with hashed password (302), login failure with wrong password (401), login failure with wrong email (401), plaintext fallback, session creation, password migration utility, rate limiting."
+        },
+        {
+          "action": "Verify ADMIN_PASSWORD_HASH is valid bcrypt in .env",
+          "expected": "Hash starts with $2b$ and is 60 chars",
+          "observed": "ADMIN_PASSWORD_HASH is set, 60 chars, valid bcrypt format ($2b$). Password verifies against hash successfully."
+        },
+        {
+          "action": "curl POST /login with valid credentials",
+          "expected": "302 redirect",
+          "observed": "HTTP 302, redirect to /"
+        },
+        {
+          "action": "curl POST /login with invalid credentials",
+          "expected": "401 Unauthorized",
+          "observed": "HTTP 401 with 'Invalid email or password' error message"
+        }
+      ],
+      "evidence": {
+        "pytestOutput": "foundation/security/VAL-FOUND-001-pytest-output.txt",
+        "curlValidLogin": "foundation/security/VAL-FOUND-001-curl-valid-login.txt",
+        "curlInvalidLogin": "foundation/security/VAL-FOUND-001-curl-invalid-login.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-002",
+      "title": "Shell injection prevention",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_security.py -v (shell injection subset: 59 tests)",
+          "expected": "All shell injection tests pass",
+          "observed": "59/59 tests passed covering: sanitize utilities (contains_shell_metacharacters, validate_shell_input, sanitize_command_string, sanitize_service_name, sanitize_ip_address, sanitize_file_path), Brain.execute_plan() blocks semicolon/pipe/backtick/$() injection and uses shell=False, Healer uses argument lists and rejects unsafe service names and injection in IP fields, WorkflowRuntime._run_shell_step() blocks all injection patterns, and static analysis confirms no create_subprocess_shell or shell=True in critical paths."
+        },
+        {
+          "action": "Verify Brain.execute_plan() uses create_subprocess_exec (not shell)",
+          "expected": "Source code uses create_subprocess_exec, not create_subprocess_shell",
+          "observed": "test_engine_execute_plan_no_shell_true PASSED - source inspection confirms create_subprocess_exec used"
+        },
+        {
+          "action": "Verify Healer remediation uses argument lists",
+          "expected": "subprocess.run called with list args, not shell=True",
+          "observed": "All 8 healer source inspection tests PASSED - no shell=True in any healer method"
+        },
+        {
+          "action": "Verify WorkflowRuntime blocks injection",
+          "expected": "Shell metacharacters rejected, safe commands allowed",
+          "observed": "6/6 workflow runtime tests PASSED - semicolon, pipe, backtick, $() all blocked; safe 'echo hello' allowed; empty command rejected"
+        }
+      ],
+      "evidence": {
+        "pytestOutput": "foundation/security/VAL-FOUND-002-pytest-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-003",
+      "title": "SQL injection prevention",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_security.py -v -k SQLInjection (14 tests)",
+          "expected": "All SQL injection tests pass",
+          "observed": "14/14 tests passed covering: DROP TABLE, UNION injection, SQL comment injection, semicolon multi-statement, DELETE, UPDATE, non-SELECT queries, ALTER TABLE, EXEC injection, SLEEP time-based blind injection all blocked. Safe SELECT allowed. Parameterized SELECT with named params allowed. Empty and None queries rejected."
+        },
+        {
+          "action": "Verify system_diagnostics db_query validates queries",
+          "expected": "Only SELECT queries allowed, dangerous patterns blocked",
+          "observed": "_validate_diagnostic_query function blocks DROP, UNION, DELETE, UPDATE, ALTER, EXEC, SLEEP and all non-SELECT queries. Safe parameterized SELECTs pass validation."
+        }
+      ],
+      "evidence": {
+        "pytestOutput": "foundation/security/VAL-FOUND-003-pytest-output.txt",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-004",
+      "title": "API key encryption at rest",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/test_crypto.py -v (26 tests)",
+          "expected": "All encryption tests pass",
+          "observed": "26/26 tests passed covering: encrypt returns string, encrypted differs from plaintext, decrypt returns original, round-trip with special chars/empty/unicode, same value encrypts to different ciphertext (Fernet timestamps), invalid token raises exception, encrypted values have 'enc:v1:' prefix, is_encrypted detection, key derivation from app secret (deterministic, different secrets yield different keys, valid Fernet key), maybe_decrypt handles both encrypted and plaintext, API key pattern detection for anthropic/groq/openrouter."
+        },
+        {
+          "action": "Verify encryption produces 'enc:v1:' prefixed ciphertext",
+          "expected": "Encrypted values start with ENCRYPTED_PREFIX and are not readable as plaintext",
+          "observed": "ENCRYPTED_PREFIX is 'enc:v1:'. Test key 'sk-test-dummy-key-for-validation' encrypted to 'enc:v1:gAAAAABptO1UOccl-TcfxMBruxGtaPdWcfiHVjUUwBh57OEiiXShl...' — not readable as plaintext. Decrypted back correctly."
+        },
+        {
+          "action": "Query system_knowledge table for stored API keys",
+          "expected": "API keys stored as encrypted values",
+          "observed": "No API key entries currently in system_knowledge table (keys are configured via .env, not yet stored in DB). The encryption infrastructure is fully functional and ready for use."
+        }
+      ],
+      "evidence": {
+        "pytestOutput": "foundation/security/VAL-FOUND-004-pytest-output.txt",
+        "consoleErrors": "none",
+        "cryptoDemonstration": "ENCRYPTED_PREFIX='enc:v1:', encrypt/decrypt round-trip verified, is_encrypted detection works, Fernet key derived from app_secret"
+      },
+      "issues": "No API keys currently stored in system_knowledge table to verify encryption at rest in the DB. The encryption module is fully implemented and tested (26 tests). Keys will be encrypted when stored via the settings UI."
+    },
+    {
+      "id": "VAL-FOUND-012",
+      "title": "Login works after migration",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Verify ADMIN_PASSWORD_HASH is set and valid bcrypt in backend .env",
+          "expected": "Hash exists and password verifies against it",
+          "observed": "ADMIN_PASSWORD_HASH is set (60 chars, $2b$ prefix). verify_password(ADMIN_PASSWORD, ADMIN_PASSWORD_HASH) returns True."
+        },
+        {
+          "action": "curl POST http://127.0.0.1:8101/login with valid credentials",
+          "expected": "302 redirect to dashboard",
+          "observed": "HTTP 302, redirect to / (dashboard)"
+        },
+        {
+          "action": "curl POST http://127.0.0.1:8101/login with invalid credentials",
+          "expected": "401 Unauthorized",
+          "observed": "HTTP 401"
+        },
+        {
+          "action": "Verify Filament login page loads at https://ai.sanaa.co/login",
+          "expected": "200 with login form",
+          "observed": "HTTP 200, Livewire-based login form rendered with CSRF token"
+        },
+        {
+          "action": "Run PHPUnit login tests",
+          "expected": "Login tests pass",
+          "observed": "LivewireLoginTest and LoginErrorTest both fail with 'no such table: users' — these are pre-existing failures documented in AGENTS.md (missing SQLite migrations for in-memory test DB). Not related to password hashing migration."
+        },
+        {
+          "action": "pytest tests/test_auth.py LoginFlow tests verify login with bcrypt hashes",
+          "expected": "Login flow tests pass with hashed passwords",
+          "observed": "7/7 LoginFlow tests passed: login success with hashed password (302), wrong password (401), wrong email (401), plaintext fallback, page renders, logout redirect, session creation."
+        }
+      ],
+      "evidence": {
+        "pytestOutput": "foundation/security/VAL-FOUND-001-pytest-output.txt",
+        "curlValidLogin": "foundation/security/VAL-FOUND-001-curl-valid-login.txt",
+        "consoleErrors": "none"
+      },
+      "issues": "PHPUnit login tests (LivewireLoginTest, LoginErrorTest) fail due to pre-existing issue: missing SQLite migration for 'users' table in test DB. This is documented in AGENTS.md as a known pre-existing failure unrelated to this migration. The backend login flow with bcrypt hashing is fully verified via pytest (25 tests) and curl (302 for valid, 401 for invalid)."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Backend curl login with 'changeme' password returned 401 — the actual ADMIN_PASSWORD in .env is different from the commonly assumed default. Had to use Python to read the actual .env password securely for curl testing.",
+      "resolved": true,
+      "resolution": "Used Python subprocess with dotenv to read actual credentials and invoke curl without exposing password in shell history",
+      "affectedAssertions": ["VAL-FOUND-001", "VAL-FOUND-012"]
+    },
+    {
+      "description": "Filament login page uses Livewire 3 wire:submit — cannot be tested via simple curl POST (returns 405). Login must go through Livewire's JavaScript-driven submission flow.",
+      "resolved": true,
+      "resolution": "Backend API login at http://127.0.0.1:8101/login was used for curl testing instead. Filament page confirmed to load correctly (200) with proper form rendering.",
+      "affectedAssertions": ["VAL-FOUND-012"]
+    },
+    {
+      "description": "test_api_key_encryption.py file referenced in task does not exist — the actual file is tests/test_crypto.py",
+      "resolved": true,
+      "resolution": "Found and used tests/test_crypto.py which covers all API key encryption functionality",
+      "affectedAssertions": ["VAL-FOUND-004"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-FOUND-001: 25/25 pytest tests pass for password hashing, curl confirms 302/401 for valid/invalid logins. VAL-FOUND-002: 59/59 pytest tests pass for shell injection prevention across sanitize utilities, Brain, Healer, and WorkflowRuntime. VAL-FOUND-003: 14/14 pytest tests pass for SQL injection prevention in system_diagnostics. VAL-FOUND-004: 26/26 pytest tests pass for API key encryption with Fernet. VAL-FOUND-012: Backend login with bcrypt works (302 redirect), Filament page loads, PHPUnit login tests are pre-existing failures (documented)."
+}

@@ -1,51 +1,80 @@
-# User Testing
+# User Testing Knowledge — Sanaa AI Platform
 
-Testing surface, validation approach, and resource cost classification.
+## Testing Surfaces
 
----
+### API (curl)
+- **Base URL:** `http://127.0.0.1:8101`
+- **Authentication:** Bearer token via `Authorization: Bearer $MAC_CLIENT_API_KEY` (from backend .env)
+- **Health endpoint (no auth):** `GET /api/health` → 200 JSON `{"status":"ok","service":"Sanaa AI","version":"2.2.0","channels":["web","telegram"]}`
+- **Skills endpoint (auth required):** `GET /api/skills` → 200 JSON `{"count": N, "skills": [...]}`
+- **Skill run (auth required):** `POST /api/skills/{name}/run` with JSON body
 
-## Validation Surface
+### PHPUnit (Laravel)
+- **Command:** `cd /var/www/ai.sanaa.co/frontend && php artisan test`
+- **In-memory SQLite** — doesn't need real backend
+- **Pre-existing failing tests (ignore):** ExampleTest, LivewireLoginTest, LoginErrorTest
 
-### API Testing (Primary)
-- **Tool:** curl
-- **Target:** http://127.0.0.1:8101/api/*
-- **Auth:** Bearer token from SANAA_ENGINE_KEY env var
-- **Scope:** All backend API endpoints (health, skills, tenants, alerts, etc.)
+### Backend Tests (pytest)
+- **Command:** `cd /var/www/ai.sanaa.co/backend && /opt/antigravity/venv/bin/python3 -m pytest tests/ -v --tb=short -x`
+- **Python venv:** `/opt/antigravity/venv/bin/python3`
+- **242 tests currently collected**
 
-### UI Testing (Limited)
-- **Tool:** agent-browser
-- **Target:** https://ai.sanaa.co (production URL via Cloudflare)
-- **Scope:** Unauthenticated pages only (login page rendering)
-- **Limitation:** Skip authenticated UI testing per user preference
-
-### PHP Testing
-- **Tool:** PHPUnit via `php artisan test`
-- **Target:** Frontend feature tests and unit tests
-- **Scope:** Filament page loading, Livewire component behavior, form submissions
-- **Note:** Can test authenticated pages via Laravel test framework (no browser needed)
-
-### Python Testing
-- **Tool:** pytest via `/opt/antigravity/venv/bin/python3 -m pytest`
-- **Target:** Backend unit and integration tests
-- **Scope:** Skills, agents, memory, API routes, security
+### Browser (agent-browser)
+- Use sparingly — max 1 concurrent instance
+- Frontend URL: `https://ai.sanaa.co`
+- Login page: `https://ai.sanaa.co/login`
 
 ## Validation Concurrency
 
-### curl-based validators
-- **Resource cost:** ~5MB RAM each, negligible CPU
-- **Max concurrent:** 5
-- **Rationale:** Low overhead, safe on resource-constrained system
+### curl surface
+- **Max concurrent validators:** 2
+- **Reasoning:** API is read-mostly for these tests, low resource cost per validator
 
-### agent-browser validators
-- **Resource cost:** ~300-500MB RAM each, 0.5-1 CPU core
-- **Max concurrent:** 1
-- **Rationale:** System has only ~5GB available RAM with swap fully used and load avg >8 on 8 cores. Running more than 1 Chromium instance risks OOM.
+### pytest surface
+- **Max concurrent validators:** 1
+- **Reasoning:** Tests may share database state, concurrent pytest runs risk port/DB conflicts
 
-### Overall max concurrent validators: 2
-(1 agent-browser + 1 curl, or 2 curl)
+### phpunit surface
+- **Max concurrent validators:** 1
+- **Reasoning:** Uses in-memory SQLite so isolated, but CPU/memory constrained system
 
-## Known Constraints
-- Frontend only reachable via HTTPS at ai.sanaa.co (not localhost:80)
-- No authenticated browser testing — validators must use PHPUnit for authenticated page tests
-- High system load (avg > 8 on 8 cores) — keep validator processes minimal
-- sanaa-cloud.service is crash-looping (pre-existing, ignore)
+## Flow Validator Guidance: curl
+
+### Isolation Rules
+- Each validator uses the same API key for auth: `$MAC_CLIENT_API_KEY` (from backend .env)
+- API calls are stateless reads for most foundation assertions
+- Validators should NOT modify global state (don't create/delete users, change settings)
+- For POST endpoints (skill runs), use non-destructive parameters
+
+### Boundaries
+- Only use `http://127.0.0.1:8101` — do not start new services
+- Do not restart services during validation
+- Do not modify .env or config files
+
+## Flow Validator Guidance: pytest
+
+### Isolation Rules
+- Run tests in the backend directory: `cd /var/www/ai.sanaa.co/backend`
+- Use the venv: `/opt/antigravity/venv/bin/python3 -m pytest`
+- Tests are self-contained with fixtures/mocks
+- Only one pytest session at a time
+
+### Boundaries
+- Do not modify test files during validation
+- Report test results as-is
+
+## Flow Validator Guidance: phpunit
+
+### Isolation Rules
+- Run in frontend directory: `cd /var/www/ai.sanaa.co/frontend`
+- Uses `php artisan test` with PHPUnit
+- In-memory SQLite — no shared state with backend
+
+### Pre-existing Failures (Ignore)
+- ExampleTest — missing SQLite migration
+- LivewireLoginTest — wrong status code expectation
+- LoginErrorTest — wrong status code expectation
+
+### Boundaries
+- Do not modify test files during validation
+- Report pass/fail for mission-related tests only
