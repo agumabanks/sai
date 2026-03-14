@@ -1,0 +1,42 @@
+name: market_intelligence
+version: "1.0.0"
+description: >
+  Market intelligence skill for competitor monitoring and market analysis.
+  Aggregate signals from RSS feeds and web sources, analyze market trends
+  via LLM, monitor competitor URLs for content changes, and generate
+  structured market intelligence reports.
+permissions: [network]
+requires_approval: false
+timeout: 120
+tags: [market-intelligence, research, competitors, trends, analysis]
+category: research
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: scan_market (aggregate signals from configured RSS
+      feeds and web sources), analyze_trends (identify market trends,
+      opportunities, and threats via LLM), competitor_watch (monitor competitor
+      URLs for content changes), report (generate structured market
+      intelligence report).
+    required: true
+    enum: [scan_market, analyze_trends, competitor_watch, report]
+  - name: feeds
+    type: array
+    description: "List of RSS feed URLs to scan (required for scan_market)."
+    required: false
+  - name: urls
+    type: array
+    description: "List of competitor URLs to monitor (required for competitor_watch)."
+    required: false
+  - name: topic
+    type: string
+    description: "Market topic or industry to focus analysis on (optional for analyze_trends and report)."
+    required: false
+  - name: timeframe
+    type: string
+    description: "Timeframe for report: 'daily', 'weekly', 'monthly' (optional, default: weekly)."
+    required: false
+    default: weekly
+    enum: [daily, weekly, monthly]
