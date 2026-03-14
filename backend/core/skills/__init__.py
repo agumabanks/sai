@@ -12,6 +12,7 @@ from core.skills.base import BaseSkill, SkillContext, SkillResult
 from core.skills.registry import SkillRegistry
 from core.skills.loader import SkillLoader
 from core.skills.scanner import SkillScanner
+from core.skills.hot_reload import SkillFileWatcher
 
 __all__ = [
     "BaseSkill",
@@ -20,4 +21,5 @@ __all__ = [
     "SkillRegistry",
     "SkillLoader",
     "SkillScanner",
+    "SkillFileWatcher",
 ]

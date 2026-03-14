@@ -60,3 +60,6 @@ beautifulsoup4>=4.12
 
 # YAML support
 pyyaml>=6.0
+
+# File watching (skill hot-reload)
+watchdog>=6.0

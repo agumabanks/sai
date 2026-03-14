@@ -38,6 +38,7 @@ from core.intelligence.scanner import IntelligenceScanner
 from core.intelligence.skills import AutonomousSkillMapper
 from core.workflows.loader import WorkflowLoader
 from core.workflows.runtime import WorkflowRuntime
+from core.skills.hot_reload import SkillFileWatcher
 
 # Route modules
 from core.routes import deps as route_deps
@@ -87,6 +88,11 @@ scanner = IntelligenceScanner()
 skill_mapper = AutonomousSkillMapper()
 workflow_loader = WorkflowLoader()
 workflow_runtime = WorkflowRuntime(skill_registry=brain.skill_registry, brain=brain)
+
+skill_watcher = SkillFileWatcher(
+    skills_dir=str(BASE_DIR / "skills"),
+    skill_registry=brain.skill_registry,
+)
 
 whatsapp_saas = WhatsAppSaaSManager(
     source_path=settings.whatsapp_saas_source_path,
@@ -243,10 +249,17 @@ async def lifespan(app: FastAPI):
         health = await whatsapp_saas.health_check()
         logger.info(f"WhatsApp SaaS (wa.sanaa.co) health: {'OK' if health.get('healthy') else 'DOWN'}")
 
+    # Start skill hot-reload file watcher (background daemon thread)
+    try:
+        skill_watcher.start()
+    except Exception as e:
+        logger.warning(f"Skill hot-reload watcher failed to start: {e}")
+
     print(f"Sanaa AI is online ({settings.app_env}) — channels: {list(router.channels.keys())}")
     yield
 
     # Shutdown
+    skill_watcher.stop()
     if route_deps.whatsapp_adapter:
         await route_deps.whatsapp_adapter.disconnect()
     if route_deps.telegram_adapter:
