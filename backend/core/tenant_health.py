@@ -430,6 +430,67 @@ class TenantHealthChecker:
             tenant.updated_at = utcnow()
             await session.commit()
 
+    async def handle_degradation_alert(self, check_result: dict) -> None:
+        """Create an alert and send email notification when tenant health degrades.
+
+        Called when a tenant's health status is 'degraded' or 'down'.
+        Creates an Alert record associated with the tenant and sends an
+        email notification to configured recipients via ReportAgent.
+        """
+        from core.database import Alert
+
+        tenant_id = check_result.get("tenant_id")
+        name = check_result.get("name", "unknown")
+        status = check_result.get("status", "unknown")
+        health_score = check_result.get("health_score", 0)
+        error = check_result.get("error", "")
+
+        if status not in ("degraded", "down"):
+            return
+
+        severity = "critical" if status == "down" else "high"
+        title = f"Tenant {name} is {status}"
+        message = (
+            f"Tenant '{name}' health check detected {status} status.\n"
+            f"Health score: {health_score}\n"
+            f"Error: {error or 'N/A'}\n"
+            f"Checked at: {check_result.get('checked_at', 'N/A')}"
+        )
+
+        try:
+            await Alert.create(
+                severity=severity,
+                source=f"tenant_health:{name}",
+                title=title,
+                message=message,
+                metric="health_score",
+                tenant_id=tenant_id,
+            )
+            logger.info(f"[TenantHealth] Created {severity} alert for tenant '{name}' ({status})")
+        except Exception as e:
+            logger.error(f"[TenantHealth] Failed to create alert for tenant '{name}': {e}")
+
+        # Send email notification via ReportAgent
+        try:
+            from core.agents.report_agent import ReportAgent
+            reporter = ReportAgent()
+            email_subject = f"[Sanaa AI] Tenant {status.upper()}: {name}"
+            email_body = (
+                f"TENANT HEALTH ALERT\n"
+                f"{'=' * 40}\n\n"
+                f"Tenant: {name}\n"
+                f"Status: {status.upper()}\n"
+                f"Severity: {severity.upper()}\n"
+                f"Health Score: {health_score}/100\n"
+                f"Error: {error or 'N/A'}\n"
+                f"Checked at: {check_result.get('checked_at', 'N/A')}\n\n"
+                f"Please investigate immediately."
+            )
+            await reporter.send_alert_email(email_subject, email_body)
+            logger.info(f"[TenantHealth] Sent degradation email for tenant '{name}'")
+        except Exception as e:
+            logger.error(f"[TenantHealth] Failed to send degradation email for tenant '{name}': {e}")
+
     async def run_health_update_cycle(self) -> dict:
         """Run a full health check cycle: check all tenants and persist results.
 
@@ -440,13 +501,22 @@ class TenantHealthChecker:
         """
         health_data = await self.check_all_tenants()
 
-        # Persist results to DB
+        # Persist results to DB and handle degradation alerts
         for tenant_result in health_data.get("tenants", []):
             try:
                 await self.update_tenant_health_in_db(tenant_result)
             except Exception as e:
                 logger.error(
                     f"Failed to update health for tenant "
+                    f"{tenant_result.get('name', '?')}: {e}"
+                )
+
+            # Auto-create alert + email for degraded/down tenants
+            try:
+                await self.handle_degradation_alert(tenant_result)
+            except Exception as e:
+                logger.error(
+                    f"Failed to handle degradation alert for tenant "
                     f"{tenant_result.get('name', '?')}: {e}"
                 )
 

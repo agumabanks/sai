@@ -131,13 +131,29 @@ class Alert(Base, ActiveRecordMixin):
     title = Column(String(500), nullable=True)
     message = Column(Text, nullable=False)
     metric = Column(String(50), nullable=True)
+    tenant_id = Column(Integer, nullable=True, index=True)  # FK to tenants (nullable for non-tenant alerts)
     acknowledged = Column(Boolean, default=False)
     acknowledged_by = Column(String(100), nullable=True)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
+    __table_args__ = (
+        Index("idx_alerts_tenant_id", "tenant_id"),
+        Index("idx_alerts_created_at", "created_at"),
+    )
+
     @classmethod
     async def create(cls, **kwargs):
+        # Auto-correlate with tenant if tenant_id not explicitly provided
+        if "tenant_id" not in kwargs or kwargs["tenant_id"] is None:
+            try:
+                tenant_id = await cls._correlate_tenant(kwargs)
+                if tenant_id:
+                    kwargs["tenant_id"] = tenant_id
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Alert tenant correlation failed: {e}")
+
         # Call the mixin's create
         instance = await super().create(**kwargs)
         
@@ -156,14 +172,64 @@ class Alert(Base, ActiveRecordMixin):
                     asyncio.get_running_loop()
                     asyncio.create_task(reporter.send_alert_email(subject, body))
                 except RuntimeError:
-                    # In a sync context or no loop, we just wait for the coroutine?
-                    # The `create` method itself is async, so we must be inside a running event loop!
                     asyncio.create_task(reporter.send_alert_email(subject, body))
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).error(f"Failed to trigger instant alert notification: {e}")
                 
         return instance
+
+    @classmethod
+    async def _correlate_tenant(cls, kwargs: dict) -> int | None:
+        """Try to match an alert to a tenant by source, title, message, or URL patterns.
+
+        Matching strategy:
+        1. Exact tenant_id if provided
+        2. Match source/title/message against tenant name
+        3. Match source/title/message against tenant URL
+        """
+        source = (kwargs.get("source") or "").lower()
+        title = (kwargs.get("title") or "").lower()
+        message = (kwargs.get("message") or "").lower()
+        search_text = f"{source} {title} {message}"
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Tenant))
+            tenants = result.scalars().all()
+
+            for tenant in tenants:
+                tenant_name = (tenant.name or "").lower()
+                tenant_url = (tenant.url or "").lower()
+
+                # Match by tenant name in the alert text
+                if tenant_name and tenant_name in search_text:
+                    return tenant.id
+
+                # Match by tenant URL (or domain portion) in the alert text
+                if tenant_url:
+                    # Extract domain from URL for matching
+                    from urllib.parse import urlparse
+                    try:
+                        parsed = urlparse(tenant_url)
+                        domain = parsed.hostname or ""
+                        if domain and domain in search_text:
+                            return tenant.id
+                    except Exception:
+                        pass
+
+        return None
+
+    @classmethod
+    async def get_by_tenant(cls, tenant_id: int, limit: int = 20):
+        """Get recent alerts for a specific tenant, ordered by most recent first."""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls)
+                .where(cls.tenant_id == tenant_id)
+                .order_by(desc(cls.created_at))
+                .limit(limit)
+            )
+            return result.scalars().all()
 
 
 # ==================== NEW TABLES ====================

@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from core.database import Tenant, AsyncSessionLocal, utcnow
+from core.database import Tenant, Alert, AsyncSessionLocal, utcnow
 from core.routes.deps import require_auth
 from core.tenant_health import TenantHealthChecker
 
@@ -51,9 +51,24 @@ class TenantUpdate(BaseModel):
     config: Optional[dict] = None
 
 
-def _tenant_to_dict(tenant: Tenant) -> dict:
-    """Serialize a Tenant model instance to a dict."""
+def _alert_to_dict(alert: Alert) -> dict:
+    """Serialize an Alert model instance to a dict."""
     return {
+        "id": alert.id,
+        "severity": alert.severity,
+        "source": alert.source,
+        "title": alert.title,
+        "message": alert.message,
+        "metric": alert.metric,
+        "tenant_id": alert.tenant_id,
+        "acknowledged": alert.acknowledged,
+        "created_at": alert.created_at.isoformat() if alert.created_at else None,
+    }
+
+
+def _tenant_to_dict(tenant: Tenant, recent_alerts: list | None = None) -> dict:
+    """Serialize a Tenant model instance to a dict."""
+    result = {
         "id": tenant.id,
         "name": tenant.name,
         "type": tenant.type,
@@ -65,6 +80,9 @@ def _tenant_to_dict(tenant: Tenant) -> dict:
         "created_at": tenant.created_at.isoformat() if tenant.created_at else None,
         "updated_at": tenant.updated_at.isoformat() if tenant.updated_at else None,
     }
+    if recent_alerts is not None:
+        result["recent_alerts"] = [_alert_to_dict(a) for a in recent_alerts]
+    return result
 
 
 # ==================== ENDPOINTS ====================
@@ -230,7 +248,7 @@ async def check_tenant(tenant_id: int, user: dict = Depends(require_auth)):
 
 @router.get("/api/tenants/{tenant_id}")
 async def get_tenant(tenant_id: int, user: dict = Depends(require_auth)):
-    """Get tenant detail with config."""
+    """Get tenant detail with config and recent alerts."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Tenant).where(Tenant.id == tenant_id)
@@ -238,7 +256,30 @@ async def get_tenant(tenant_id: int, user: dict = Depends(require_auth)):
         tenant = result.scalars().first()
         if not tenant:
             raise HTTPException(status_code=404, detail="Tenant not found")
-        return _tenant_to_dict(tenant)
+
+        # Include recent alerts for this tenant
+        recent_alerts = await Alert.get_by_tenant(tenant_id, limit=10)
+        return _tenant_to_dict(tenant, recent_alerts=recent_alerts)
+
+
+@router.get("/api/tenants/{tenant_id}/alerts")
+async def get_tenant_alerts(tenant_id: int, limit: int = 20, user: dict = Depends(require_auth)):
+    """Get alerts associated with a specific tenant."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        tenant = result.scalars().first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+    alerts = await Alert.get_by_tenant(tenant_id, limit=min(limit, 100))
+    return {
+        "tenant_id": tenant_id,
+        "tenant_name": tenant.name,
+        "alerts": [_alert_to_dict(a) for a in alerts],
+        "total": len(alerts),
+    }
 
 
 @router.put("/api/tenants/{tenant_id}")
