@@ -838,6 +838,33 @@ class TaskReminder(Base, ActiveRecordMixin):
     )
 
 
+# ==================== TENANT CONTROL ====================
+
+class Tenant(Base, ActiveRecordMixin):
+    """Unified tenant data model for all managed services.
+
+    Represents finance tenants, e-commerce (Soko), email (Mailcow), and
+    other services as first-class entities in the control plane.
+    """
+    __tablename__ = "tenants"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True)
+    type = Column(String(20), nullable=False)  # finance, ecommerce, email, other
+    url = Column(String(500), nullable=True)
+    status = Column(String(20), default="active", nullable=False)  # active, inactive, degraded, down
+    health_score = Column(Float, default=100.0, nullable=False)
+    last_checked = Column(DateTime(timezone=True), nullable=True)
+    config = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_tenants_name", "name", unique=True),
+        Index("idx_tenants_type", "type"),
+        Index("idx_tenants_status", "status"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():

@@ -55,6 +55,7 @@ from core.routes.config import router as config_router
 from core.routes.workflows import router as workflows_router
 from core.routes.watchdog import router as watchdog_router
 from core.routes.sellers import router as sellers_router
+from core.routes.tenants import router as tenants_router, seed_initial_tenants
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -200,6 +201,7 @@ async def _load_persisted_brain_config():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await seed_initial_tenants()
     app.state.rate_limiter = rate_limiter
 
     # Auto-migrate admin password to bcrypt hash on first run
@@ -316,3 +318,4 @@ app.include_router(config_router)
 app.include_router(workflows_router)
 app.include_router(watchdog_router)
 app.include_router(sellers_router)
+app.include_router(tenants_router)
