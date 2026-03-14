@@ -1,0 +1,56 @@
+{
+  "featureId": "memory-consolidation",
+  "reviewedAt": "2026-03-14T08:15:00.000Z",
+  "commitId": "8b3214c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The memory consolidation feature is correctly implemented in commit 8b3214c (NOT the handoff-referenced c62347d which contains self_improve code). The implementation creates core/memory/consolidation.py with MemoryConsolidator class implementing all three required operations: merge (>0.9 cosine similarity), confidence decay (×0.95 for 30+ days unaccessed), and prune (confidence <0.1 and age >90 days). Deduplication before store (>0.95 similarity) is implemented via check_duplicate_before_store() and integrated into MemoryManager.store(). Celery Beat task registered at 3:00 AM EAT. All 18 tests pass against real PostgreSQL with pgvector. The intelligence-scan was sensibly moved from 3:00 AM to 3:15 AM to avoid overlap. Verified memories are protected from decay, pruning, and being merged away. IMPORTANT: The handoff file references the wrong commit (c62347d is self_improve, not consolidation). The actual consolidation commit is 8b3214c.",
+    "issues": [
+      {
+        "file": "backend/core/memory/consolidation.py",
+        "line": 31,
+        "severity": "non_blocking",
+        "description": "_get_session() creates a new async engine on every call. The consolidation pipeline calls merge, decay, and prune sequentially — each creates its own engine+session. The rest of the codebase uses AsyncSessionLocal (a shared session factory). Creating 3 engines per consolidation run is wasteful and could leak connections if errors occur between engine creation and the finally block. Should use AsyncSessionLocal for consistency."
+      },
+      {
+        "file": "backend/core/memory/consolidation.py",
+        "line": 126,
+        "severity": "non_blocking",
+        "description": "merge_similar_memories() fetches ALL memories with embeddings into memory at once (line 126-131), then runs a separate pgvector similarity query per memory (O(N²) database round-trips). The batch_size parameter is accepted but never actually used for pagination. For tables with thousands of memories, this will be slow and memory-intensive. Consider processing in batches or using a self-join approach."
+      },
+      {
+        "file": "backend/core/memory/consolidation.py",
+        "line": 168,
+        "severity": "non_blocking",
+        "description": "Combined confidence formula: survivor + sum(deleted.confidence * 0.5). The 0.5 multiplier is undocumented and not specified in the feature requirements. The spec says 'combined confidence' which could mean a straight sum (capped at 1.0). The current formula discounts merged memories' contributions by 50%, which is a reasonable design choice but should be documented."
+      },
+      {
+        "file": "backend/core/tasks.py",
+        "line": 60,
+        "severity": "non_blocking",
+        "description": "The memory-prune task (2 AM) in MemoryManager.prune() already performs confidence decay (×0.95 for 30+ days) and deletion of low-confidence old memories — identical logic to what MemoryConsolidator.apply_confidence_decay() and prune_old_memories() do at 3 AM. This means stale memories get decayed TWICE daily (effective decay = 0.95² ≈ 0.9025 per day instead of 0.95). The prune task should either be updated to skip decay/delete (deferring to consolidation) or the consolidation should skip those steps."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker used a custom _get_session() helper that creates a new async engine per call instead of using the project's shared AsyncSessionLocal factory. AGENTS.md says 'All database operations use async SQLAlchemy (asyncpg)' but doesn't specify which session factory to use. The architecture.md documents AsyncSessionLocal but not when to use alternatives.",
+      "evidence": "backend/core/memory/consolidation.py:31 creates engine via create_async_engine() on each call; compare to backend/core/memory/manager.py which uses AsyncSessionLocal throughout"
+    },
+    {
+      "area": "conventions",
+      "observation": "The existing MemoryManager.prune() (called at 2 AM) and the new MemoryConsolidator (called at 3 AM) both perform confidence decay and old-memory deletion with identical parameters. This duplication should be documented or resolved. AGENTS.md and architecture.md don't mention the relationship between prune and consolidation tasks.",
+      "evidence": "backend/core/memory/manager.py:374-391 does decay+delete; backend/core/memory/consolidation.py:210-245 does the same. Both are Celery Beat tasks running 1 hour apart (2 AM and 3 AM)"
+    },
+    {
+      "area": "conventions",
+      "observation": "The handoff file for session 642b54f2 references commitId c62347d (the self_improve skill commit) rather than the actual consolidation commit 8b3214c. The transcript skeleton also describes self_improve implementation, not consolidation. This indicates a worker session confusion — the session labeled as completing memory-consolidation actually completed the self_improve skill. The real consolidation commit exists but has no matching handoff.",
+      "evidence": "Handoff file: 2026-03-14T05-48-36-345Z__memory-consolidation__642b54f2.json has commitId c62347d and salientSummary mentioning 'self_improve skill'. Real consolidation commit: git show 8b3214c -- 5 files changed, 1042 insertions"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The memory consolidation feature is fully implemented and all 18 tests pass. Core functionality covers merge (>0.9 cosine similarity), confidence decay (×0.95 for 30+ days), prune (<0.1 confidence + >90 days), dedup-on-store (>0.95 similarity), and Celery Beat task (3 AM EAT). Non-blocking issues: (1) custom session factory instead of shared AsyncSessionLocal, (2) O(N²) merge queries without batching, (3) double-decay due to overlap with existing memory-prune task, (4) handoff metadata mismatch — wrong commit referenced. The actual implementation commit is 8b3214c, not the handoff-recorded c62347d."
+}

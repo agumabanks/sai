@@ -1,0 +1,67 @@
+{
+  "featureId": "memory-learning-logs",
+  "reviewedAt": "2026-03-14T10:22:00.000Z",
+  "commitId": "2d6f3db",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature implementation is solid and meets all requirements from the feature spec. A LearningLog SQLAlchemy model is correctly defined in core/database.py with all required fields (id, timestamp, log_type, source, content, confidence, category, promoted, promotion_timestamp) and proper indexes. The LearningLogManager class in core/memory/learning_logs.py provides add_entry(), get_entries(), search_entries(), and get_by_category() methods. Input validation (log_type, source), confidence clamping, and full-text search via PostgreSQL tsvector are properly implemented. 29 pytest tests cover CRUD, model schema, search, filtering, edge cases (invalid inputs, empty queries, confidence clamping, date ranges), and schema compliance. The tests use a clever __test__ marker for cleanup isolation. The handoff document is mismatched (describes tenant-health-monitoring work instead of learning logs), but the actual commit 2d6f3db contains the correct implementation.",
+    "issues": [
+      {
+        "file": "backend/core/memory/learning_logs.py",
+        "line": 17,
+        "severity": "non_blocking",
+        "description": "Unused imports: 'select', 'desc', 'and_' from sqlalchemy and 'AsyncSession' from sqlalchemy.ext.asyncio are imported but never used. The code uses raw SQL via sa_text() exclusively, bypassing the ORM query builder. These should be removed to keep the code clean."
+      },
+      {
+        "file": "backend/core/memory/learning_logs.py",
+        "line": 210,
+        "severity": "non_blocking",
+        "description": "Dead code: The _to_dict() static method converts a LearningLog ORM instance to a dict, but it is never called anywhere in the codebase. Only _row_to_dict() is used since all queries return raw SQL mappings. Either remove _to_dict() or refactor the manager to use ORM queries."
+      },
+      {
+        "file": "backend/core/memory/learning_logs.py",
+        "line": 195,
+        "severity": "non_blocking",
+        "description": "search_entries() does not sanitize tsquery metacharacters in user-provided query words. Special characters like '&', '|', ':', '*', '!', '(', ')' in search terms could cause PostgreSQL to_tsquery() parsing errors. Consider using plainto_tsquery() or websearch_to_tsquery() instead of manually constructing tsquery with '|' joins, or sanitize individual words before building the tsquery string."
+      },
+      {
+        "file": "backend/core/memory/learning_logs.py",
+        "line": 88,
+        "severity": "non_blocking",
+        "description": "Raw SQL used throughout instead of the ORM model. The LearningLog SQLAlchemy model is fully defined in database.py but the manager bypasses it entirely, using sa_text() for all INSERT and SELECT operations. While functional, this misses ORM benefits (type safety, relationship traversal, default handling) and is inconsistent with the project's async SQLAlchemy patterns documented in AGENTS.md."
+      },
+      {
+        "file": "backend/core/memory/learning_logs.py",
+        "line": 131,
+        "severity": "non_blocking",
+        "description": "get_entries() does not validate log_type parameter. Unlike add_entry() which raises ValueError for invalid types, get_entries() silently accepts any string and returns no results. Should validate log_type against VALID_LOG_TYPES when not None for consistency."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "There are now two separate LearningLogManager classes in the codebase with completely different architectures: core/memory/learning_logs.py (new, database table-backed with raw SQL) and core/intelligence/learning_logs.py (pre-existing, system_knowledge table-backed with auto-detection patterns). Both are actively imported by different modules. The message_router and brain engine use the intelligence version, while reflection_agent, self_improve skill, and tests use the memory version. AGENTS.md does not document which is canonical or when to use which.",
+      "evidence": "core/router/message_router.py:196 imports from core.intelligence.learning_logs; core/agents/reflection_agent.py:317 imports from core.memory.learning_logs; skills/self_improve/handler.py:24 imports from core.memory.learning_logs"
+    },
+    {
+      "area": "conventions",
+      "observation": "The handoff document for this feature (commitId b038694) describes an entirely different feature (tenant-health-monitoring), not the learning logs implementation. The actual learning logs commit is 2d6f3db. This suggests a handoff generation bug or session reuse issue where the wrong handoff content was recorded.",
+      "evidence": "Handoff file: 2026-03-14T07-38-24-102Z__memory-learning-logs__1768d69d.json contains salientSummary about 'cross-service tenant health monitoring with TenantHealthChecker class' and lists test_tenant_health.py tests. Actual learning logs commit: git log --all --oneline -- backend/core/memory/learning_logs.py shows 2d6f3db."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill procedure says to write tests FIRST (Red Phase), then implement. The worker's skillFeedback confirms followedProcedure=true but the feedback content also describes tenant health monitoring work, not learning logs, reinforcing the handoff mismatch.",
+      "evidence": "Handoff skillFeedback.suggestedChanges mentions 'endpoint tests involving real DB operations need mocking of AsyncSessionLocal' which relates to API endpoint testing done for tenant-health-monitoring, not for learning logs which has no API endpoints."
+    },
+    {
+      "area": "conventions",
+      "observation": "The manager uses raw SQL (sa_text) for all database operations despite having a fully-defined SQLAlchemy ORM model. AGENTS.md says 'All database operations use async SQLAlchemy (asyncpg)' but doesn't specify ORM vs raw SQL preference. Other parts of the codebase (e.g., core/intelligence/learning_logs.py) use a mix of ORM and raw SQL. A convention clarifying the preferred approach would help future workers.",
+      "evidence": "backend/core/memory/learning_logs.py uses sa_text() for INSERT (line 88) and all SELECT queries (lines 146, 175, 198). The LearningLog ORM model in database.py line 718 has full column definitions including defaults that are bypassed."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The memory-learning-logs feature is correctly implemented with a LearningLog SQLAlchemy model (all required fields, proper indexes) and a LearningLogManager class providing add_entry(), get_entries(), search_entries(), and get_by_category(). 29 comprehensive tests cover CRUD, search, schema validation, and edge cases. The main concerns are non-blocking: unused imports, dead code (_to_dict method), raw SQL used instead of the ORM, unsanitized tsquery input in search, and a significant handoff mismatch where the handoff document describes tenant-health-monitoring work instead of learning logs (actual commit is 2d6f3db, not b038694). There's also an architectural concern about two competing LearningLogManager classes in different packages (core/memory vs core/intelligence) that AGENTS.md should clarify."
+}

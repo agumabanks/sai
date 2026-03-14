@@ -55,6 +55,18 @@ Architectural decisions, patterns, and conventions discovered during the mission
 - **Async fixtures:** Use `@pytest.fixture` (not `@pytest_asyncio.fixture`) — pytest-asyncio auto mode handles it
 - **asyncpg safety:** In async cleanup fixtures, create a one-shot engine for teardown operations; do NOT reuse the same engine that ran the test (prevents `InterfaceError: cannot perform operation: another operation is in progress`)
 
+## Memory & Learning System
+- **Learning Logs:** Two LearningLogManager classes exist:
+  - `core/memory/learning_logs.py` — new, dedicated `learning_logs` DB table, raw SQL, used by reflection_agent, self_improve skill, and tests
+  - `core/intelligence/learning_logs.py` — pre-existing, uses `system_knowledge` table, used by message_router and brain engine
+  - The memory version is the canonical one for the milestone 2 learning system
+- **Promotion Engine:** `core/memory/promotion.py` — PromotionEngine groups similar learning entries by fuzzy text matching (SequenceMatcher), auto-promotes at configurable threshold (default 3). Celery task runs every 6 hours.
+- **Consolidation:** `core/memory/consolidation.py` — MemoryConsolidator handles merge (>0.9 similarity), decay (×0.95 for 30+ day stale), and prune (<0.1 confidence + >90 days old). Celery task at 3 AM EAT.
+- **⚠️ Double-decay concern:** Existing `memory-prune` task (2 AM) in `MemoryManager.prune()` AND new `memory-consolidation` task (3 AM) both apply confidence decay. This means stale memories get decayed twice daily (effective 0.9025 instead of 0.95). Future workers should resolve this overlap.
+- **Dedup-on-store:** `MemoryManager.store()` checks for >0.95 cosine similarity before inserting; updates existing memory confidence instead of creating duplicate.
+- **Context Assembly:** `core/memory/context.py` ContextAssembler pipeline: (1) RRF fusion search via MemoryManager, (2) dedup, (3) promoted learnings from PromotionEngine, (4) infrastructure knowledge, (5) token budget enforcement (8K default).
+- **One-shot engine for Celery/standalone:** Code running outside FastAPI lifespan (Celery tasks, consolidation, promotion) creates fresh `create_async_engine` per call via `_get_session()` helpers instead of using `AsyncSessionLocal`. This avoids event-loop conflicts but creates connection overhead. Same pattern as test fixtures (see Test Infrastructure section).
+
 ## Conventions
 - **Python skills:** Always `manifest.yaml` + `handler.py` in `backend/skills/{skill_name}/`
 - **Manifest parameter formats:** Two styles exist (list-style and dict-style) — `parse_manifest()` only handles list-style. 13/33 skills use dict-style. New skills should use list-style.

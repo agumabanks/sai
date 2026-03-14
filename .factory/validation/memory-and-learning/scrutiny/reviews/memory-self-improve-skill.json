@@ -1,0 +1,50 @@
+{
+  "featureId": "memory-self-improve-skill",
+  "reviewedAt": "2026-03-14T08:15:00.000Z",
+  "commitId": "7ab6653640af559ada73e14e0388920cbd4be980",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Session 30d79c3a implemented the WRONG feature. The commit 7ab6653 enhances ReflectionAgent with correction detection and gap detection (10 correction regex patterns, 5 false-positive filters, 8 AI uncertainty patterns, 3 needs-info patterns). This work matches the 'memory-reflection-upgrade' feature description, NOT 'memory-self-improve-skill'. None of the 6 expected behaviors for memory-self-improve-skill are addressed by this commit: no self_improve skill directory was created, no manifest.yaml, no handler.py with analyze_errors/learn_patterns/suggest_improvements actions, no skill_runs scanning, no API endpoint. The actual self_improve skill implementation exists (commit c62347d, backend/skills/self_improve/) but was created by a different session (642b54f2) under a different feature handoff (memory-consolidation). The code quality of the correction/gap detection work itself is solid — well-structured regex patterns, proper false-positive filtering, good test coverage (28 tests), clean integration with learning logs — but it is the wrong deliverable for this feature.",
+    "issues": [
+      {
+        "file": "backend/core/agents/reflection_agent.py",
+        "line": 1,
+        "severity": "blocking",
+        "description": "Wrong feature implemented. This commit enhances ReflectionAgent with correction/gap detection (memory-reflection-upgrade), but the feature requires creating a self_improve skill at backend/skills/self_improve/ with manifest.yaml + handler.py implementing analyze_errors, learn_patterns, and suggest_improvements actions."
+      },
+      {
+        "file": "backend/tests/test_reflection.py",
+        "line": 1,
+        "severity": "blocking",
+        "description": "Tests validate correction detection and gap detection patterns — these are tests for memory-reflection-upgrade, not memory-self-improve-skill. The feature requires tests at backend/tests/skills/test_self_improve.py covering the self_improve skill's analyze_errors, learn_patterns, and suggest_improvements actions."
+      },
+      {
+        "file": "backend/skills/self_improve/handler.py",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "The actual self_improve skill implementation exists (created by commit c62347d from session 642b54f2) and appears functionally correct — proper SkillResult returns, LearningLogManager integration, Brain/LLM prompt construction, error grouping, keyword extraction for pattern detection, 20 tests. However, this code was NOT delivered by the reviewed session."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker confused feature assignments. Session 30d79c3a was assigned memory-self-improve-skill but implemented correction/gap detection in ReflectionAgent (the memory-reflection-upgrade feature). The commit message says 'memory-reflection-upgrade' in the tag. AGENTS.md has no guidance on verifying the correct feature is being implemented before committing.",
+      "evidence": "Commit 7ab6653 message: 'Enhance ReflectionAgent with correction and gap detection (memory-reflection-upgrade)' — but handoff featureId is 'memory-self-improve-skill'. The worker's own handoff.salientSummary describes correction detection and gap detection, not the self_improve skill."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill SKILL.md does not instruct workers to verify their assigned feature ID matches their implementation before committing. Adding a step like 'Before committing, verify your implementation matches ALL expectedBehaviors listed for your assigned feature' could prevent this kind of cross-feature mixup.",
+      "evidence": "Worker followed the skill procedure (TDD, write tests first, run full suite, commit only changed files) but implemented the wrong feature entirely. skillFeedback.followedProcedure=true is misleading since the procedure was followed for the wrong deliverable."
+    },
+    {
+      "area": "conventions",
+      "observation": "Feature cross-contamination: session 642b54f2 created the actual self_improve skill (commit c62347d) but handed off under feature ID 'memory-consolidation'. Its handoff.salientSummary says 'Implemented the self_improve skill...' while being tagged as memory-consolidation. Two features were swapped between two workers.",
+      "evidence": "Handoff 2026-03-14T05-48-36-345Z__memory-consolidation__642b54f2 contains commitId c62347d with salientSummary describing self_improve skill implementation, not memory consolidation."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — Session 30d79c3a delivered the wrong feature. Commit 7ab6653 implements correction detection and gap detection in ReflectionAgent (matching memory-reflection-upgrade), not the self_improve skill (memory-self-improve-skill). None of the 6 expected behaviors are met by this commit: no skill directory, no manifest, no handler with analyze_errors/learn_patterns/suggest_improvements, no API integration. The actual self_improve skill exists (backend/skills/self_improve/) but was created by commit c62347d from session 642b54f2 under the wrong feature handoff (memory-consolidation). This is a feature assignment swap between two workers."
+}
