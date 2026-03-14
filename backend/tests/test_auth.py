@@ -97,7 +97,7 @@ class TestLoginFlow:
     @pytest.fixture(autouse=True)
     def _bypass_rate_limiter(self):
         """Bypass rate limiter for all login tests so they don't interfere."""
-        with patch("core.main.rate_limiter") as mock_rl:
+        with patch("core.routes.deps.rate_limiter") as mock_rl:
             mock_rl.check = AsyncMock(return_value=True)
             mock_rl.get_remaining = AsyncMock(return_value=5)
             yield mock_rl
@@ -108,7 +108,7 @@ class TestLoginFlow:
         test_hash = hash_password(test_password)
         test_email = "admin@ai.sanaa.co"
 
-        with patch("core.main.settings") as mock_settings:
+        with patch("core.routes.auth.settings") as mock_settings:
             mock_settings.admin_email = test_email
             mock_settings.admin_password = test_password
             mock_settings.admin_password_hash = test_hash
@@ -127,7 +127,7 @@ class TestLoginFlow:
         test_hash = hash_password(test_password)
         test_email = "admin@ai.sanaa.co"
 
-        with patch("core.main.settings") as mock_settings:
+        with patch("core.routes.auth.settings") as mock_settings:
             mock_settings.admin_email = test_email
             mock_settings.admin_password = test_password
             mock_settings.admin_password_hash = test_hash
@@ -146,7 +146,7 @@ class TestLoginFlow:
         test_hash = hash_password(test_password)
         test_email = "admin@ai.sanaa.co"
 
-        with patch("core.main.settings") as mock_settings:
+        with patch("core.routes.auth.settings") as mock_settings:
             mock_settings.admin_email = test_email
             mock_settings.admin_password = test_password
             mock_settings.admin_password_hash = test_hash
@@ -164,7 +164,7 @@ class TestLoginFlow:
         test_email = "admin@ai.sanaa.co"
         test_password = "changeme"
 
-        with patch("core.main.settings") as mock_settings:
+        with patch("core.routes.auth.settings") as mock_settings:
             mock_settings.admin_email = test_email
             mock_settings.admin_password = test_password
             mock_settings.admin_password_hash = ""  # No hash configured
@@ -194,7 +194,7 @@ class TestLoginFlow:
         test_hash = hash_password(test_password)
         test_email = "admin@ai.sanaa.co"
 
-        with patch("core.main.settings") as mock_settings:
+        with patch("core.routes.auth.settings") as mock_settings:
             mock_settings.admin_email = test_email
             mock_settings.admin_password = test_password
             mock_settings.admin_password_hash = test_hash
@@ -268,7 +268,7 @@ class TestLoginRateLimit:
     async def test_rate_limit_blocks_excessive_attempts(self, client):
         """POST /login should return 429 after too many attempts."""
         # Use real rate limiter but with a mock that blocks after limit
-        with patch("core.main.rate_limiter") as mock_rl:
+        with patch("core.routes.deps.rate_limiter") as mock_rl:
             mock_rl.check = AsyncMock(return_value=False)
             mock_rl.get_remaining = AsyncMock(return_value=0)
 
