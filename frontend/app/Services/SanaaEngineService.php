@@ -38,7 +38,7 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)
-                ->timeout(30)  // 30s timeout for LLM responses
+                ->timeout(120)
                 ->post("{$this->baseUrl}/command", [
                     'command' => $command,
                 ]);
@@ -57,6 +57,35 @@ class SanaaEngineService
             return $response->json() ?? ['error' => 'Invalid response format'];
         } catch (\Exception $e) {
             Log::error("Sanaa Engine Command Error: " . $e->getMessage());
+            return ['status' => 'failed', 'error' => $e->getMessage()];
+        }
+    }
+
+    public function executeCommandAsync(string $command): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(10)
+                ->post("{$this->baseUrl}/command", [
+                    'command' => $command,
+                    'async' => true,
+                ]);
+            return $response->json() ?? ['error' => 'Invalid response'];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Async Command Error: " . $e->getMessage());
+            return ['status' => 'failed', 'error' => $e->getMessage()];
+        }
+    }
+
+    public function getCommandStatus(string $cmdId): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(5)
+                ->get("{$this->baseUrl}/command/{$cmdId}");
+            return $response->json() ?? ['status' => 'unknown'];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Command Status Error: " . $e->getMessage());
             return ['status' => 'failed', 'error' => $e->getMessage()];
         }
     }
@@ -273,6 +302,23 @@ class SanaaEngineService
         }
     }
 
+    /**
+     * Get system preferences.
+     */
+    public function getPreferences(array $keys): array
+    {
+        try {
+            $keysStr = implode(',', $keys);
+            $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/system/preferences", [
+                'keys' => $keysStr,
+            ]);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Get Preferences Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
     public function getToolPolicy(): array
     {
         try {
@@ -306,6 +352,96 @@ class SanaaEngineService
         }
     }
 
+    public function getSkillCatalog(bool $includeParameters = false): array
+    {
+        $payload = $this->getSkills();
+
+        if (! is_array($payload)) {
+            return [
+                'skills' => [],
+                'tool_policy' => [],
+                'error' => 'Invalid skills payload returned by the Sanaa engine.',
+            ];
+        }
+
+        $toolIndex = [];
+
+        foreach ($payload['tools'] ?? [] as $tool) {
+            $function = $tool['function'] ?? null;
+
+            if (! is_array($function)) {
+                continue;
+            }
+
+            $name = (string) ($function['name'] ?? '');
+
+            if ($name === '') {
+                continue;
+            }
+
+            $schema = is_array($function['parameters'] ?? null)
+                ? $function['parameters']
+                : [];
+
+            $toolIndex[$name] = [
+                'parameters' => $this->normalizeSkillParameters($schema),
+            ];
+        }
+
+        $skills = [];
+
+        foreach ($payload['skills'] ?? [] as $skill) {
+            if (! is_array($skill)) {
+                continue;
+            }
+
+            $name = (string) ($skill['name'] ?? '');
+
+            if ($name === '') {
+                continue;
+            }
+
+            $groups = $this->normalizeStringList($skill['groups'] ?? []);
+            $tags = $this->normalizeStringList($skill['tags'] ?? []);
+            $category = $this->resolveSkillCategory($groups, $tags);
+
+            $entry = [
+                'name' => $name,
+                'description' => (string) ($skill['description'] ?? ''),
+                'version' => (string) ($skill['version'] ?? '1.0.0'),
+                'category' => $category,
+                'tags' => $tags,
+                'enabled' => ($skill['enabled'] ?? true) !== false,
+                'requires_approval' => (bool) ($skill['requires_approval'] ?? false),
+            ];
+
+            if ($includeParameters) {
+                $entry['parameters'] = $toolIndex[$name]['parameters'] ?? [];
+            }
+
+            $skills[] = $entry;
+        }
+
+        usort($skills, fn (array $left, array $right): int => strcmp($left['name'], $right['name']));
+
+        return [
+            'skills' => $skills,
+            'tool_policy' => is_array($payload['tool_policy'] ?? null) ? $payload['tool_policy'] : [],
+            'error' => (string) ($payload['error'] ?? ''),
+        ];
+    }
+
+    public function getSkillDefinition(string $skillName): ?array
+    {
+        foreach ($this->getSkillCatalog(true)['skills'] as $skill) {
+            if (($skill['name'] ?? '') === $skillName) {
+                return $skill;
+            }
+        }
+
+        return null;
+    }
+
     public function setSkillEnabled(string $skill, bool $enabled): array
     {
         $endpoint = $enabled ? 'enable' : 'disable';
@@ -329,6 +465,63 @@ class SanaaEngineService
             Log::error("Sanaa Engine Skill Exposure Error: " . $e->getMessage());
             return ['error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Run a specific skill with the given arguments.
+     */
+    public function runSkill(string $skillName, array $args = [], string $sessionId = '', int $timeout = 60): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout($timeout)
+                ->post("{$this->baseUrl}/skills/{$skillName}/run", [
+                    'args' => $args,
+                    'session_id' => $sessionId ?: 'admin:skills_center',
+                ]);
+            $json = $response->json() ?? [];
+
+            // The backend wraps skill results in 'detail' on 400 responses
+            // (when success=false, e.g. alerts found). Extract the actual data.
+            if ($response->failed() && isset($json['detail']) && is_array($json['detail'])) {
+                return $json['detail'];
+            }
+            if ($response->failed()) {
+                return ['success' => false, 'error' => 'HTTP ' . $response->status() . ': ' . $response->body()];
+            }
+            return $json ?: ['success' => false, 'error' => 'Empty response'];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Skill Run Error: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get recent skill run history (via session_logs tool_calls).
+     */
+    public function getSkillRuns(int $limit = 20): array
+    {
+        return $this->runSkill('session_logs', ['action' => 'tool_calls', 'limit' => $limit]);
+    }
+
+    /**
+     * Hot-reload a skill into the live registry.
+     */
+    public function hotReloadSkill(string $skillName): array
+    {
+        return $this->runSkill('skill_creator', ['action' => 'hot_reload', 'skill_name' => $skillName]);
+    }
+
+    /**
+     * Create a new skill from a natural language description.
+     */
+    public function createSkill(string $skillName, string $description): array
+    {
+        return $this->runSkill('skill_creator', [
+            'action' => 'create',
+            'skill_name' => $skillName,
+            'skill_description' => $description,
+        ]);
     }
 
     public function getWorkflows(): array
@@ -435,6 +628,185 @@ class SanaaEngineService
         }
     }
 
+    protected function normalizeSkillParameters(array $schema): array
+    {
+        $properties = is_array($schema['properties'] ?? null)
+            ? $schema['properties']
+            : [];
+        $required = array_fill_keys(
+            array_values(array_filter($schema['required'] ?? [], 'is_string')),
+            true,
+        );
+
+        $normalized = [];
+
+        foreach ($properties as $name => $definition) {
+            if (! is_string($name) || ! is_array($definition)) {
+                continue;
+            }
+
+            $normalized[$name] = [
+                'type' => (string) ($definition['type'] ?? 'string'),
+                'description' => (string) ($definition['description'] ?? ''),
+                'required' => isset($required[$name]),
+                'default' => $definition['default'] ?? null,
+                'enum' => $this->normalizeStringList($definition['enum'] ?? []),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    protected function normalizeStringList(mixed $values): array
+    {
+        if (! is_array($values)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(
+                static fn (mixed $value): string => is_string($value) ? trim($value) : '',
+                $values,
+            ),
+            static fn (string $value): bool => $value !== '',
+        ));
+    }
+
+    protected function resolveSkillCategory(array $groups, array $tags): string
+    {
+        $candidates = array_map('strtolower', array_merge($groups, $tags));
+
+        foreach ($candidates as $candidate) {
+            if (in_array($candidate, ['development', 'coding', 'developer'], true)) {
+                return 'development';
+            }
+
+            if (in_array($candidate, ['monitoring', 'operations', 'infrastructure', 'finance', 'server'], true)) {
+                return 'monitoring';
+            }
+
+            if (in_array($candidate, ['communication', 'whatsapp', 'telegram', 'email'], true)) {
+                return 'communication';
+            }
+
+            if (in_array($candidate, ['productivity', 'workflow', 'project', 'tasks'], true)) {
+                return 'productivity';
+            }
+
+            if (in_array($candidate, ['research', 'news', 'analysis'], true)) {
+                return 'research';
+            }
+
+            if (in_array($candidate, ['meta', 'ai', 'brain', 'reflection'], true)) {
+                return 'meta';
+            }
+        }
+
+        return 'system';
+    }
+
+    // ── ML Self-Learning API ──────────────────────────────────────────────
+
+    public function getMLScores(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/ml/scores");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Scores Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getSkillMLScore(string $skillName): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/{$skillName}/ml/score");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Skill Score Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getSkillMLMetrics(string $skillName, string $period = 'daily', int $limit = 30): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/{$skillName}/ml/metrics", [
+                'period' => $period,
+                'limit' => $limit,
+            ]);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Metrics Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function submitSkillFeedback(string $skillName, int $rating, string $type = 'thumbs', ?string $comment = null, ?int $runId = null): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/skills/{$skillName}/ml/feedback", [
+                'rating' => $rating,
+                'feedback_type' => $type,
+                'comment' => $comment,
+                'skill_run_id' => $runId,
+            ]);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Feedback Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    public function getSkillLearningLog(string $skillName, int $limit = 20): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/skills/{$skillName}/ml/learning", [
+                'limit' => $limit,
+            ]);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Learning Log Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getSkillParameterInsights(string $skillName): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/{$skillName}/ml/parameters");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Parameters Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function triggerMLAnalysis(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(60)->post("{$this->baseUrl}/skills/ml/analyze");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Analysis Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    public function getGlobalLearningLog(int $limit = 50): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/skills/ml/learning-log", [
+                'limit' => $limit,
+            ]);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa ML Global Learning Log Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
     public function getSessions(int $limit = 100): array
     {
         try {
@@ -511,6 +883,78 @@ class SanaaEngineService
         } catch (\Exception $e) {
             Log::error("Sanaa Engine Briefing QA Error: " . $e->getMessage());
             return [];
+        }
+    }
+
+    // ── Tenant Control API ────────────────────────────────────────────────
+
+    /**
+     * List all registered tenants.
+     */
+    public function getTenants(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/tenants");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Tenants Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get aggregated tenant health scores.
+     */
+    public function getTenantHealth(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/tenants/health");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Tenant Health Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Enable a tenant (set status to active).
+     */
+    public function enableTenant(int $id): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/tenants/{$id}/enable");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Tenant Enable Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Disable a tenant (set status to inactive).
+     */
+    public function disableTenant(int $id): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/tenants/{$id}/disable");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Tenant Disable Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Trigger an immediate health check for a specific tenant.
+     */
+    public function checkTenant(int $id): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(20)->post("{$this->baseUrl}/tenants/{$id}/check");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Tenant Check Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
         }
     }
 }
