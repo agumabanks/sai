@@ -1,0 +1,60 @@
+name: content_generator
+version: "1.0.0"
+description: >
+  Brand-aware content generation skill. Produce SEO-optimized blog posts,
+  social media copy batches for multiple platforms, email marketing copy
+  with subject line A/B variants, and configure brand voice parameters
+  (tone, vocabulary, style guide) for consistent brand identity across
+  all generated content.
+permissions: [network]
+requires_approval: false
+timeout: 120
+tags: [content, marketing, brand-voice, blog, social, email, seo]
+category: marketing
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: blog_post (generate SEO-optimized blog post),
+      social_copy (generate social media copy for multiple platforms),
+      email_copy (generate email marketing copy with subject line variants),
+      brand_voice (configure brand voice parameters).
+    required: true
+    enum: [blog_post, social_copy, email_copy, brand_voice]
+  - name: topic
+    type: string
+    description: "Topic or subject for content generation (required for blog_post, social_copy, email_copy)."
+    required: false
+  - name: length
+    type: string
+    description: "Target content length: short, medium, long (optional for blog_post, default: medium)."
+    required: false
+    default: medium
+    enum: [short, medium, long]
+  - name: tone
+    type: string
+    description: "Content tone override: professional, casual, authoritative, friendly, humorous (optional, overrides brand voice)."
+    required: false
+    enum: [professional, casual, authoritative, friendly, humorous]
+  - name: platforms
+    type: array
+    description: "Target platforms for social_copy: twitter, linkedin, facebook, instagram (default: all)."
+    required: false
+  - name: subject_variants
+    type: integer
+    description: "Number of subject line A/B variants for email_copy (default: 3, max: 5)."
+    required: false
+    default: 3
+  - name: brand_name
+    type: string
+    description: "Brand name for voice configuration (required for brand_voice)."
+    required: false
+  - name: voice_params
+    type: object
+    description: "Brand voice parameters: {tone, vocabulary, style_guide, values, audience} (required for brand_voice)."
+    required: false
+  - name: keywords
+    type: array
+    description: "SEO keywords to include in blog_post content (optional)."
+    required: false
