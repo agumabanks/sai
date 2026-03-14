@@ -886,6 +886,50 @@ class SanaaEngineService
         }
     }
 
+    // ── Marketing Dashboard API ──────────────────────────────────────────
+
+    /**
+     * Get aggregated marketing metrics (campaigns, email stats, social stats).
+     */
+    public function getMarketingMetrics(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/metrics");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Marketing Metrics Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get social media analytics overview (post counts, platform breakdown, recent posts).
+     */
+    public function getSocialAnalytics(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/social");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Social Analytics Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get scheduled content calendar (upcoming posts and campaign tasks).
+     */
+    public function getScheduledContent(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/calendar");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Scheduled Content Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
     // ── Tenant Control API ────────────────────────────────────────────────
 
     /**
