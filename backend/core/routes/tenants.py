@@ -151,6 +151,80 @@ async def individual_tenant_health(tenant_id: int, user: dict = Depends(require_
     return check_result
 
 
+# ==================== LIFECYCLE MANAGEMENT ====================
+
+
+@router.post("/api/tenants/{tenant_id}/enable")
+async def enable_tenant(tenant_id: int, user: dict = Depends(require_auth)):
+    """Enable a tenant: set status to 'active' and resume health check polling."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        tenant = result.scalars().first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        tenant.status = "active"
+        tenant.updated_at = utcnow()
+        await session.commit()
+        await session.refresh(tenant)
+        logger.info(f"Tenant '{tenant.name}' (id={tenant.id}) enabled")
+        return _tenant_to_dict(tenant)
+
+
+@router.post("/api/tenants/{tenant_id}/disable")
+async def disable_tenant(tenant_id: int, user: dict = Depends(require_auth)):
+    """Disable a tenant: set status to 'inactive' and stop health check polling."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        tenant = result.scalars().first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        tenant.status = "inactive"
+        tenant.updated_at = utcnow()
+        await session.commit()
+        await session.refresh(tenant)
+        logger.info(f"Tenant '{tenant.name}' (id={tenant.id}) disabled")
+        return _tenant_to_dict(tenant)
+
+
+@router.post("/api/tenants/{tenant_id}/check")
+async def check_tenant(tenant_id: int, user: dict = Depends(require_auth)):
+    """Trigger an immediate health check for a specific tenant.
+
+    Unlike GET /api/tenants/{id}/health, this endpoint forces a check even
+    for inactive tenants and always persists the result.
+    """
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        tenant = result.scalars().first()
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        tenant_data = {
+            "id": tenant.id,
+            "name": tenant.name,
+            "type": tenant.type,
+            "url": tenant.url,
+            "status": tenant.status,
+        }
+
+    checker = TenantHealthChecker()
+    # Force check regardless of tenant status
+    check_result = await checker.check_single_tenant_forced(tenant_data)
+
+    # Persist health check result
+    await checker.update_tenant_health_in_db(check_result)
+
+    return check_result
+
+
 # ==================== CRUD (DETAIL) ====================
 
 

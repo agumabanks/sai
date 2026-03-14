@@ -76,6 +76,38 @@ class TenantHealthChecker:
                 "skipped": True,
             }
 
+        return await self._dispatch_check(tenant_data)
+
+    async def check_single_tenant_forced(self, tenant_data: dict) -> dict:
+        """Perform a live health check on a single tenant, ignoring status.
+
+        Unlike check_single_tenant, this does NOT skip inactive tenants.
+        Used by the POST /api/tenants/{id}/check endpoint to trigger
+        immediate checks regardless of tenant state.
+
+        Args:
+            tenant_data: Dict with keys: id, name, type, url, status
+
+        Returns:
+            Dict with: tenant_id, name, type, status, health_score,
+                       response_time_ms, checked_at, error (if any), skipped
+        """
+        return await self._dispatch_check(tenant_data)
+
+    async def _dispatch_check(self, tenant_data: dict) -> dict:
+        """Dispatch health check to the appropriate type-specific checker.
+
+        Args:
+            tenant_data: Dict with keys: id, name, type, url, status
+
+        Returns:
+            Health check result dict
+        """
+        tenant_id = tenant_data.get("id")
+        name = tenant_data.get("name", "unknown")
+        tenant_type = tenant_data.get("type", "other")
+        url = tenant_data.get("url")
+
         # Dispatch to type-specific check
         if tenant_type in ("finance", "ecommerce"):
             return await self._check_http_tenant(tenant_data)
@@ -309,12 +341,18 @@ class TenantHealthChecker:
     async def check_all_tenants(self) -> dict:
         """Check health of all active tenants and return aggregated result.
 
+        Inactive tenants are excluded from polling — only active, degraded,
+        and down tenants are checked. Disabling a tenant (status='inactive')
+        stops it from being polled here.
+
         Returns:
             Dict with: overall_score, overall_status, tenants (list), checked_at
         """
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Tenant).order_by(Tenant.name)
+                select(Tenant).where(
+                    Tenant.status != "inactive"
+                ).order_by(Tenant.name)
             )
             tenants = result.scalars().all()
 
