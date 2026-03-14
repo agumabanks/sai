@@ -1,0 +1,59 @@
+{
+  "groupId": "curl-memory",
+  "testedAt": "2026-03-14T12:00:00Z",
+  "isolation": {
+    "apiBaseUrl": "http://127.0.0.1:8101",
+    "authentication": "Bearer token from MAC_CLIENT_API_KEY in backend/.env"
+  },
+  "toolsUsed": ["curl", "pytest"],
+  "assertions": [
+    {
+      "id": "VAL-MEM-008",
+      "title": "Self-improving agent skill",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run pytest tests/skills/test_self_improve.py -v",
+          "expected": "All tests pass",
+          "observed": "20/20 tests passed in 7.14s. Tests cover: manifest parsing (6), skill loading (2), analyze_errors action (3), learn_patterns action (3), suggest_improvements action (3), error handling (2), API integration (1)."
+        },
+        {
+          "action": "Verify self_improve skill is listed in GET /api/skills",
+          "expected": "self_improve appears in skills list",
+          "observed": "self_improve found in the skills listing (GET /api/skills returned 200 with 39 skills including self_improve)"
+        },
+        {
+          "action": "Execute self_improve skill via POST /api/skills/self_improve/run with args.action=analyze_errors",
+          "expected": "200 response with meaningful analysis result",
+          "observed": "200 response with success=true, analyzed 47 failed skill runs across 14 skills, created 14 ERRORS entries in learning logs. Response included structured data with errors_found, skills_affected, entries_created, and by_skill breakdown."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "N/A (API testing)",
+        "network": "POST /api/skills/self_improve/run -> 200 (101ms), GET /api/skills -> 200",
+        "files": [
+          "memory-and-learning/curl-memory/VAL-MEM-008-pytest-output.txt",
+          "memory-and-learning/curl-memory/VAL-MEM-008-curl-skill-run.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Test file is at tests/skills/test_self_improve.py, not tests/test_self_improve.py as suggested in the task prompt",
+      "resolved": true,
+      "resolution": "Found correct path via glob search and ran tests from there",
+      "affectedAssertions": ["VAL-MEM-008"]
+    },
+    {
+      "description": "The API request body format for skill run uses {\"args\":{\"action\":\"analyze_errors\"}} not {\"action\":\"analyze_errors\",\"parameters\":{}}",
+      "resolved": true,
+      "resolution": "Read SkillRunRequest model in routes/skills.py to discover correct format: args dict wraps all parameters",
+      "affectedAssertions": ["VAL-MEM-008"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 1 assertion (VAL-MEM-008): PASSED. All 20 pytest tests passed. The self_improve skill is listed in the API and successfully executes analyze_errors action, returning structured error analysis with learning log entries created."
+}

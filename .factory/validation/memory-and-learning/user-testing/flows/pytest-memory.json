@@ -1,0 +1,192 @@
+{
+  "groupId": "pytest-memory",
+  "testedAt": "2026-03-14T09:15:00Z",
+  "isolation": {
+    "workingDirectory": "/var/www/ai.sanaa.co/backend",
+    "pythonVenv": "/opt/antigravity/venv/bin/python3",
+    "testRunner": "pytest",
+    "singleSessionOnly": true
+  },
+  "toolsUsed": ["pytest"],
+  "assertions": [
+    {
+      "id": "VAL-MEM-001",
+      "title": "Structured learning logs created",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_learning_logs.py -v --tb=short", "expected": "Tests for model existence, column definitions, and CRUD for LEARNINGS/ERRORS/FEATURE_REQUESTS pass", "observed": "29/29 tests passed including TestLearningLogModel (model_exists, required_columns, table_exists_in_db, column_types) and TestAddEntry (add_learning_entry, add_error_entry, add_feature_request_entry)" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-learning-logs-output.txt",
+        "keyTests": ["test_model_exists", "test_model_has_required_columns", "test_table_exists_in_db", "test_add_learning_entry", "test_add_error_entry", "test_add_feature_request_entry", "test_get_entries_by_type", "test_get_entries_all_types"],
+        "totalTests": 29,
+        "passed": 29,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-002",
+      "title": "Learning entry format",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_learning_logs.py -v --tb=short (TestLearningEntrySchema class)", "expected": "Schema tests verify timestamp, source, content, confidence, category fields", "observed": "All schema tests passed: test_entry_has_all_required_fields, test_source_values_are_valid, test_log_type_values_are_valid, test_confidence_is_float_in_range, test_promoted_flag_and_timestamp" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-learning-logs-output.txt",
+        "keyTests": ["test_entry_has_all_required_fields", "test_source_values_are_valid", "test_log_type_values_are_valid", "test_confidence_is_float_in_range", "test_promoted_flag_and_timestamp"],
+        "totalTests": 5,
+        "passed": 5,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-003",
+      "title": "Learning promotion above threshold",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_promotion.py -v --tb=short (TestPromotionThreshold class)", "expected": "Tests verify entries at/above threshold get promoted with timestamp, below threshold not promoted", "observed": "All promotion threshold tests passed: test_entries_below_threshold_not_promoted, test_entries_at_threshold_get_promoted, test_promoted_entries_have_timestamp, test_promotion_above_threshold, test_dissimilar_entries_not_grouped" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-promotion-output.txt",
+        "keyTests": ["test_entries_below_threshold_not_promoted", "test_entries_at_threshold_get_promoted", "test_promoted_entries_have_timestamp", "test_promotion_above_threshold"],
+        "totalTests": 25,
+        "passed": 25,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-004",
+      "title": "Context assembly includes promoted learnings",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_promotion.py -v --tb=short (TestContextAssembly class)", "expected": "Tests verify promoted learnings appear in context assembly pipeline", "observed": "All context assembly tests passed: test_context_includes_promoted_learnings, test_get_promoted_entries_returns_only_promoted, test_promoted_learnings_format_for_context, test_context_assembler_includes_promoted" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-promotion-output.txt",
+        "keyTests": ["test_context_includes_promoted_learnings", "test_get_promoted_entries_returns_only_promoted", "test_promoted_learnings_format_for_context", "test_context_assembler_includes_promoted"],
+        "totalTests": 4,
+        "passed": 4,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-005",
+      "title": "RRF fusion search returns results",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_context_assembly.py -v --tb=short -k rrf", "expected": "Tests verify hybrid search with cosine similarity + full-text search via RRF returns results", "observed": "13/13 RRF-related tests passed including test_rrf_fusion_search_returns_results, test_vector_search_runs_cosine_similarity, test_fts_search_runs_ts_rank, test_hybrid_search_uses_both_methods" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-context-assembly-rrf-output.txt",
+        "keyTests": ["test_rrf_fusion_search_returns_results", "test_rrf_uses_k60", "test_rrf_deduplicates_results", "test_vector_search_runs_cosine_similarity", "test_fts_search_runs_ts_rank", "test_hybrid_search_uses_both_methods", "test_rrf_score_formula"],
+        "totalTests": 13,
+        "passed": 13,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-006",
+      "title": "Correction detection",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_reflection.py -v --tb=short (TestCorrectionDetection class)", "expected": "Tests verify ReflectionAgent detects user corrections and creates learning entries", "observed": "All correction detection tests passed: explicit corrections ('No, I meant X'), 'That's wrong' patterns, 'actually' corrections, false positive rejection, required fields validation" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-reflection-output.txt",
+        "keyTests": ["test_detect_explicit_correction_no_i_meant", "test_detect_thats_wrong_correction", "test_detect_actually_correction", "test_no_false_positive_on_simple_no", "test_correction_contains_required_fields", "test_corrections_stored_as_learnings"],
+        "totalTests": 13,
+        "passed": 13,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-007",
+      "title": "Knowledge gap detection",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_reflection.py -v --tb=short (TestGapDetection class)", "expected": "Tests verify ReflectionAgent identifies knowledge gaps and logs them", "observed": "All gap detection tests passed: 'I don't know', 'not sure', 'can't help', 'no information', 'unable to' gaps detected; user-provided missing context detected; false positives rejected" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-reflection-output.txt",
+        "keyTests": ["test_detect_i_dont_know_gap", "test_detect_not_sure_gap", "test_detect_user_provides_missing_context", "test_no_false_positive_on_normal_response", "test_gap_contains_required_fields", "test_gaps_stored_as_errors"],
+        "totalTests": 13,
+        "passed": 13,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-009",
+      "title": "Auto-promote at threshold",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_promotion.py -v --tb=short (TestAutoPromote class)", "expected": "Tests verify automatic promotion when same pattern detected 3+ times", "observed": "All auto-promotion tests passed: test_auto_promote_at_threshold, test_already_promoted_entries_skipped" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-promotion-output.txt",
+        "keyTests": ["test_auto_promote_at_threshold", "test_already_promoted_entries_skipped"],
+        "totalTests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-010",
+      "title": "Daily memory consolidation",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_consolidation.py -v --tb=short", "expected": "Tests verify merge, prune, and consolidation logging; celery task registered", "observed": "All consolidation tests passed including merge similar memories, prune old low-confidence, full consolidation returns stats, consolidation logs results, celery beat schedule includes consolidation, consolidation task runs daily" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-consolidation-output.txt",
+        "keyTests": ["test_similar_memories_are_merged", "test_old_low_confidence_deleted", "test_run_consolidation_returns_stats", "test_consolidation_logs_results", "test_celery_beat_schedule_includes_consolidation", "test_consolidation_task_runs_daily", "test_consolidation_task_callable"],
+        "totalTests": 18,
+        "passed": 18,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-011",
+      "title": "Confidence decay",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_consolidation.py -v --tb=short (TestConfidenceDecay class)", "expected": "Tests verify 0.95 decay multiplier for 30+ day stale memories, recent/verified not decayed", "observed": "All confidence decay tests passed: test_decay_applied_to_stale_memories, test_recent_memories_not_decayed, test_verified_memories_not_decayed, test_decay_persists_new_confidence" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-consolidation-output.txt",
+        "keyTests": ["test_decay_applied_to_stale_memories", "test_recent_memories_not_decayed", "test_verified_memories_not_decayed", "test_decay_persists_new_confidence"],
+        "totalTests": 4,
+        "passed": 4,
+        "failed": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MEM-012",
+      "title": "Memory deduplication",
+      "status": "pass",
+      "steps": [
+        { "action": "Run pytest tests/test_consolidation.py -v --tb=short (TestMemoryDeduplication class)", "expected": "Tests verify high-similarity memory updates existing rather than creating duplicate", "observed": "All deduplication tests passed: test_duplicate_updates_existing_confidence, test_unique_memory_not_flagged" }
+      ],
+      "evidence": {
+        "testOutput": "memory-and-learning/pytest-memory/test-consolidation-output.txt",
+        "keyTests": ["test_duplicate_updates_existing_confidence", "test_unique_memory_not_flagged"],
+        "totalTests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 11 assertions: 11 passed, 0 failed, 0 blocked. Total 113 pytest tests executed across 4 test files (test_learning_logs.py: 29/29, test_promotion.py: 25/25, test_context_assembly.py RRF: 13/13, test_reflection.py: 28/28, test_consolidation.py: 18/18). All memory and learning system features validated successfully."
+}
