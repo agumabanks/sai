@@ -11,6 +11,7 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
+use App\Models\User;
 use Filament\Pages\Page;
 
 class SessionPolicy extends Page implements HasForms
@@ -18,11 +19,21 @@ class SessionPolicy extends Page implements HasForms
     use InteractsWithForms;
 
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
-    protected static ?string $navigationGroup = 'Operations';
-    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationGroup = 'Settings';
+    protected static ?int $navigationSort = 2;
     protected static string $view = 'filament.pages.session-policy';
 
     public ?array $data = [];
+
+    /**
+     * Only admins can access Settings pages.
+     */
+    public static function canAccess(): bool
+    {
+        $user = auth()->user();
+
+        return $user instanceof User && $user->canAccessSettings();
+    }
     public array $sessions = [];
     public ?array $selectedSession = null;
 

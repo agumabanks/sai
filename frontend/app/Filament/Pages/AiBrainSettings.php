@@ -10,6 +10,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Section;
 use Filament\Notifications\Notification;
+use App\Models\User;
 use App\Services\SanaaEngineService;
 
 class AiBrainSettings extends Page implements HasForms
@@ -17,11 +18,21 @@ class AiBrainSettings extends Page implements HasForms
     use InteractsWithForms;
 
     protected static ?string $navigationIcon = 'heroicon-o-cpu-chip';
-    protected static ?string $navigationGroup = 'Intelligence';
+    protected static ?string $navigationGroup = 'Settings';
     protected static ?int $navigationSort = 1;
     protected static string $view = 'filament.pages.ai-brain-settings';
 
     public ?array $data = [];
+
+    /**
+     * Only admins can access Settings pages.
+     */
+    public static function canAccess(): bool
+    {
+        $user = auth()->user();
+
+        return $user instanceof User && $user->canAccessSettings();
+    }
 
     public function mount(): void
     {

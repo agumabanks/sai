@@ -29,6 +29,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            'role' => 'viewer',
         ];
     }
 
@@ -39,6 +40,36 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /**
+     * Create a user with the admin role.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'admin',
+        ]);
+    }
+
+    /**
+     * Create a user with the operator role.
+     */
+    public function operator(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'operator',
+        ]);
+    }
+
+    /**
+     * Create a user with the viewer role.
+     */
+    public function viewer(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'viewer',
         ]);
     }
 }
