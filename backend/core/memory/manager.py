@@ -231,22 +231,37 @@ class MemoryManager:
         expires_at: Optional[datetime] = None,
         metadata: Optional[dict] = None,
     ) -> int:
-        """Store a new memory with embedding."""
-        # Check for near-duplicates first
-        existing = await self.search(content, limit=1)
-        if existing and existing[0].get("relevance_score", 0) > 0.03:
-            # Very high similarity — bump existing confidence instead
-            await self._bump_confidence(existing[0]["id"])
-            logger.info(f"Memory near-duplicate detected, bumped ID {existing[0]['id']}")
-            return existing[0]["id"]
+        """Store a new memory with embedding.
 
-        # Generate embedding
+        Before inserting, checks for near-duplicate memories using cosine similarity
+        (>0.95 threshold). If a duplicate is found, bumps its confidence instead.
+        """
+        # Generate embedding first (needed for dedup check)
         embedding = None
         if self.has_vectors:
             try:
                 embedding = await self.embeddings.encode(content)
             except Exception as e:
                 logger.warning(f"Failed to generate embedding: {e}")
+
+        # Check for near-duplicates using cosine similarity (>0.95)
+        if embedding:
+            try:
+                from core.memory.consolidation import check_duplicate_before_store
+                dup = await check_duplicate_before_store(content, embedding)
+                if dup is not None:
+                    await self._bump_confidence(dup["existing_id"])
+                    logger.info(f"Memory near-duplicate detected (similarity={dup['similarity']:.3f}), bumped ID {dup['existing_id']}")
+                    return dup["existing_id"]
+            except Exception as e:
+                logger.warning(f"Dedup check failed, proceeding with store: {e}")
+        else:
+            # Fallback: use RRF relevance score for dedup when no embedding available
+            existing = await self.search(content, limit=1)
+            if existing and existing[0].get("relevance_score", 0) > 0.03:
+                await self._bump_confidence(existing[0]["id"])
+                logger.info(f"Memory near-duplicate detected (FTS fallback), bumped ID {existing[0]['id']}")
+                return existing[0]["id"]
 
         # Insert
         if embedding:

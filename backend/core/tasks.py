@@ -57,9 +57,13 @@ app.conf.beat_schedule = {
         'task': 'core.tasks.memory_prune',
         'schedule': crontab(hour=2, minute=0),  # 2 AM EAT — prune stale memories
     },
+    'memory-consolidation': {
+        'task': 'core.tasks.memory_consolidation',
+        'schedule': crontab(hour=3, minute=0),  # 3 AM EAT — daily memory consolidation
+    },
     'intelligence-scan': {
         'task': 'core.tasks.intelligence_scan',
-        'schedule': crontab(hour=3, minute=0),  # 3 AM EAT — domain intelligence refresh
+        'schedule': crontab(hour=3, minute=15),  # 3:15 AM EAT — domain intelligence refresh (moved to avoid overlap)
     },
     'llm-usage-report': {
         'task': 'core.tasks.llm_usage_report',
@@ -402,6 +406,45 @@ def memory_prune():
             details={"summary": f"Pruned {result.get('deleted', 0)} stale records"},
             success=True,
         )
+
+    _run_async(_run())
+
+
+@app.task
+def memory_consolidation():
+    """Daily memory consolidation — merge similar, decay stale, prune old. Runs at 3 AM EAT."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.memory.consolidation import MemoryConsolidator
+        from core.database import AuditLog
+
+        try:
+            consolidator = MemoryConsolidator()
+            stats = await consolidator.run_consolidation()
+
+            await AuditLog.log(
+                actor="celery:memory_consolidation",
+                action="memory.consolidation",
+                resource="agent_memory",
+                details={
+                    "merged_count": stats["merged_count"],
+                    "decayed_count": stats["decayed_count"],
+                    "pruned_count": stats["pruned_count"],
+                },
+                success=True,
+            )
+            logger.info(f"[Consolidation] Complete: {stats}")
+        except Exception as e:
+            logger.error(f"[Consolidation] Failed: {e}", exc_info=True)
+            await AuditLog.log(
+                actor="celery:memory_consolidation",
+                action="memory.consolidation_failed",
+                resource="agent_memory",
+                details={"error": str(e)},
+                success=False,
+            )
 
     _run_async(_run())
 
