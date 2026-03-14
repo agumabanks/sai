@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urljoin
 
-from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, Form, Response
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, Form, Response, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -36,6 +36,8 @@ from core.agents.report_agent import ReportAgent
 from core.agents.device_agent import DeviceAgent
 from core.brain.engine import Brain
 
+from core.utils.password import hash_password, verify_password, is_bcrypt_hash
+from core.security.rate_limiter import RateLimiter
 from core.router.message_router import MessageRouter
 from core.router.internal_message import InternalMessage
 from core.channels.web.adapter import WebChannelAdapter
@@ -85,6 +87,9 @@ device_agent = DeviceAgent()
 web_channel = WebChannelAdapter()
 router = MessageRouter(brain=brain)
 router.register_channel(web_channel)
+
+# Security: Rate limiter (Redis-backed with in-memory fallback)
+rate_limiter = RateLimiter(redis_url=settings.redis_url, default_rpm=60)
 
 # Watchdog + Healer
 watchdog = ServerWatchdog()
@@ -236,6 +241,16 @@ async def lifespan(app: FastAPI):
     global whatsapp_adapter, telegram_adapter
 
     await init_db()
+    # Wire rate limiter into app state for dependency access
+    app.state.rate_limiter = rate_limiter
+
+    # Auto-migrate admin password to bcrypt hash on first run
+    if settings.admin_password and settings.admin_password != "CHANGE_THIS":
+        if not settings.admin_password_hash or not is_bcrypt_hash(settings.admin_password_hash):
+            hashed = hash_password(settings.admin_password)
+            settings.admin_password_hash = hashed
+            logger.info("Admin password auto-migrated to bcrypt hash")
+
     await _load_persisted_brain_config()
     await web_channel.connect()
 
@@ -367,6 +382,20 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
     return credentials.credentials
 
 
+async def check_rate_limit(request: Request, limit: int = 60):
+    """Rate limit check dependency."""
+    client_ip = request.client.host if request.client else "unknown"
+    key = f"ip:{client_ip}"
+    allowed = await rate_limiter.check(key, limit=limit)
+    if not allowed:
+        remaining = await rate_limiter.get_remaining(key, limit=limit)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Try again in 60 seconds.",
+            headers={"Retry-After": "60", "X-RateLimit-Remaining": str(remaining)},
+        )
+
+
 # ==================== LOGIN / LOGOUT ====================
 
 @app.get("/login", response_class=HTMLResponse)
@@ -378,7 +407,29 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
-    if email == settings.admin_email and password == settings.admin_password:
+    # Rate limit: 5 attempts per minute per IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not await rate_limiter.check(f"login:{client_ip}", limit=5):
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Too many login attempts. Try again in 60 seconds."}, status_code=429
+        )
+
+    # Verify email matches admin
+    if email != settings.admin_email:
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Invalid email or password"}, status_code=401
+        )
+
+    # Password verification: prefer bcrypt hash, fall back to plaintext migration
+    password_valid = False
+    if settings.admin_password_hash and is_bcrypt_hash(settings.admin_password_hash):
+        # Use stored bcrypt hash
+        password_valid = verify_password(password, settings.admin_password_hash)
+    else:
+        # Legacy plaintext comparison (migration path)
+        password_valid = (password == settings.admin_password)
+
+    if password_valid:
         request.session["email"] = email
         request.session["logged_in_at"] = datetime.now(timezone.utc).isoformat()
         return RedirectResponse(url="/", status_code=302)
@@ -631,7 +682,28 @@ async def execute_command(
                     return HTMLResponse(f'<div class="text-green-400 whitespace-pre-wrap">{response_text}</div>')
                 return JSONResponse({"id": cmd.id, "status": "completed", "response": response_text})
 
-    # Build an InternalMessage and route through the channel system
+    # Check if caller wants async mode (poll for results later)
+    is_async = body.get("async", False) if "application/json" in content_type else False
+
+    if is_async:
+        async def _process_command_async(cmd_id: str, command_txt: str, email: str):
+            try:
+                msg = await web_channel.receive_message({
+                    "command": command_txt, "email": email, "name": email,
+                })
+                if not msg:
+                    await Command.update_by_id(cmd_id, status="failed", response="Invalid command")
+                    return
+                response_text = await router.route(msg)
+                await Command.update_by_id(cmd_id, status="completed", response=response_text)
+            except Exception as e:
+                logger.error(f"Async command {cmd_id} failed: {e}", exc_info=True)
+                await Command.update_by_id(cmd_id, status="failed", response=f"Error: {str(e)}")
+
+        background_tasks.add_task(_process_command_async, cmd.id, command_text, user["email"])
+        return JSONResponse({"id": cmd.id, "status": "processing"})
+
+    # Synchronous mode (original behavior)
     msg = await web_channel.receive_message({
         "command": command_text,
         "email": user["email"],
@@ -641,13 +713,9 @@ async def execute_command(
     if not msg:
         raise HTTPException(status_code=400, detail="Invalid command")
 
-    # Route through the brain with full memory/context
     response_text = await router.route(msg)
+    await Command.update_by_id(cmd.id, status="completed", response=response_text)
 
-    # Update command record
-    await Command.update_by_id(cmd.id, status="completed")
-
-    # Return HTML fragment for htmx, JSON for API
     if "hx-request" in request.headers:
         return HTMLResponse(
             f'<div class="text-green-400 whitespace-pre-wrap">{response_text}</div>'
@@ -658,6 +726,20 @@ async def execute_command(
         "status": "completed",
         "response": response_text,
     })
+
+
+@app.get("/api/command/{cmd_id}")
+async def get_command_status(cmd_id: str, user: dict = Depends(require_auth)):
+    """Poll for command status and response."""
+    cmd = await Command.get(cmd_id)
+    if not cmd:
+        raise HTTPException(404, "Command not found")
+    return {
+        "id": cmd.id,
+        "status": cmd.status,
+        "response": cmd.response,
+        "text": cmd.text,
+    }
 
 
 @app.post("/api/command/{cmd_id}/approve")
@@ -961,6 +1043,148 @@ async def set_skill_exposure_api(skill_name: str, body: SkillExposureUpdateReque
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"skill": skill_name, **data}
+
+
+# ==================== ML SELF-LEARNING ENDPOINTS ====================
+
+class SkillFeedbackRequest(BaseModel):
+    rating: int = Field(..., ge=-1, le=5)
+    feedback_type: str = "thumbs"
+    comment: Optional[str] = None
+    skill_run_id: Optional[int] = None
+    session_id: Optional[str] = None
+    input_args: Optional[dict] = None
+    output_snapshot: Optional[str] = None
+
+
+@app.get("/api/skills/ml/scores")
+async def skill_ml_scores_api(user: dict = Depends(require_auth)):
+    """Get ML performance scores for all skills."""
+    from core.intelligence.ml_engine import ml_engine
+    scores = await ml_engine.get_all_scores()
+    return {"scores": scores, "count": len(scores)}
+
+
+@app.get("/api/skills/{skill_name}/ml/score")
+async def skill_ml_score_api(skill_name: str, user: dict = Depends(require_auth)):
+    """Get detailed ML score and insights for a specific skill."""
+    from core.intelligence.ml_engine import ml_engine
+    return await ml_engine.get_skill_score(skill_name)
+
+
+@app.get("/api/skills/{skill_name}/ml/metrics")
+async def skill_ml_metrics_api(
+    skill_name: str,
+    period: str = "daily",
+    limit: int = 30,
+    user: dict = Depends(require_auth),
+):
+    """Get historical performance metrics for a skill."""
+    from core.database import SkillMetrics
+    history = await SkillMetrics.get_history(skill_name, period, limit)
+    return {
+        "skill_name": skill_name,
+        "period": period,
+        "metrics": [
+            {
+                "period_start": m.period_start.isoformat(),
+                "total_runs": m.total_runs,
+                "success_rate": round(m.success_rate, 3),
+                "avg_duration_ms": round(m.avg_duration_ms, 1),
+                "p95_duration_ms": round(m.p95_duration_ms, 1),
+                "performance_score": round(m.performance_score, 3),
+                "trend": m.trend,
+                "avg_user_rating": round(m.avg_user_rating, 2) if m.avg_user_rating else None,
+                "error_categories": m.error_categories or {},
+            }
+            for m in history
+        ],
+    }
+
+
+@app.post("/api/skills/{skill_name}/ml/feedback")
+async def skill_ml_feedback_api(
+    skill_name: str,
+    body: SkillFeedbackRequest,
+    user: dict = Depends(require_auth),
+):
+    """Submit user feedback on a skill execution for ML learning."""
+    from core.intelligence.ml_engine import ml_engine
+    result = await ml_engine.submit_feedback(
+        skill_name=skill_name,
+        rating=body.rating,
+        feedback_type=body.feedback_type,
+        comment=body.comment,
+        skill_run_id=body.skill_run_id,
+        session_id=body.session_id,
+        input_args=body.input_args,
+        output_snapshot=body.output_snapshot,
+    )
+    return result
+
+
+@app.get("/api/skills/{skill_name}/ml/parameters")
+async def skill_ml_parameters_api(skill_name: str, user: dict = Depends(require_auth)):
+    """Get learned optimal parameters for a skill."""
+    from core.intelligence.ml_engine import ml_engine
+    insights = await ml_engine.analyze_parameters(skill_name)
+    return {"skill_name": skill_name, "parameters": insights}
+
+
+@app.get("/api/skills/{skill_name}/ml/learning")
+async def skill_ml_learning_api(
+    skill_name: str,
+    limit: int = 20,
+    user: dict = Depends(require_auth),
+):
+    """Get learning event log for a skill."""
+    from core.database import SkillLearningLog
+    events = await SkillLearningLog.get_recent(skill_name, limit)
+    return {
+        "skill_name": skill_name,
+        "events": [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "description": e.description,
+                "confidence": round(e.confidence, 2),
+                "impact": e.impact,
+                "applied": e.applied,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in events
+        ],
+    }
+
+
+@app.post("/api/skills/ml/analyze")
+async def skill_ml_analyze_api(user: dict = Depends(require_auth)):
+    """Trigger a full ML analysis cycle across all skills."""
+    from core.intelligence.ml_engine import ml_engine
+    summary = await ml_engine.run_full_analysis()
+    return summary
+
+
+@app.get("/api/skills/ml/learning-log")
+async def skill_ml_learning_log_api(limit: int = 50, user: dict = Depends(require_auth)):
+    """Get the global learning log across all skills."""
+    from core.database import SkillLearningLog
+    events = await SkillLearningLog.get_recent(limit=limit)
+    return {
+        "events": [
+            {
+                "id": e.id,
+                "skill_name": e.skill_name,
+                "event_type": e.event_type,
+                "description": e.description,
+                "confidence": round(e.confidence, 2),
+                "impact": e.impact,
+                "applied": e.applied,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in events
+        ],
+    }
 
 
 @app.get("/api/workflows")
@@ -1271,6 +1495,17 @@ async def wa_webhook_incoming(request: Request, background_tasks: BackgroundTask
     Receive forwarded webhooks from WhatsJet.
     Processes incoming messages through Sanaa AI Brain for auto-replies.
     """
+    # Rate limit: 60 requests per minute per IP
+    client_ip = request.client.host if request.client else "unknown"
+    if not await rate_limiter.check(f"webhook:{client_ip}", limit=60):
+        return JSONResponse(status_code=429, content={"status": "rate_limited"})
+
+    # Webhook authentication: verify shared secret token
+    webhook_token = request.headers.get("X-Webhook-Token") or request.query_params.get("verify_token")
+    if settings.whatsapp_webhook_secret and webhook_token != settings.whatsapp_webhook_secret:
+        logger.warning(f"WhatsApp webhook: invalid token from {request.client.host if request.client else 'unknown'}")
+        return JSONResponse(status_code=403, content={"status": "forbidden", "reason": "invalid webhook token"})
+
     try:
         payload = await request.json()
     except Exception:
@@ -1873,6 +2108,17 @@ async def update_brain_config(request: Request, user: dict = Depends(require_aut
 
     return {"status": "success", "config": await _brain_config_snapshot()}
 
+
+@app.get("/api/system/preferences")
+async def get_preferences(request: Request, keys: str = Query(..., description="Comma separated list of preference keys"), user: dict = Depends(require_auth)):
+    """Fetch multiple system preferences from system_knowledge at once."""
+    from core.database import SystemKnowledge
+    keys_list = [k.strip() for k in keys.split(",") if k.strip()]
+    results = {}
+    for key in keys_list:
+        val = await SystemKnowledge.get_pref(key, default=None)
+        results[key] = val
+    return results
 
 @app.post("/api/system/preference")
 async def update_preference(request: Request, user: dict = Depends(require_auth)):

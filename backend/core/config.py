@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # Admin Auth
     admin_email: str = "admin@ai.sanaa.co"
     admin_password: str = "CHANGE_THIS"
+    admin_password_hash: str = ""  # bcrypt hash; auto-generated from admin_password on first run
 
     # Channels — WhatsApp
     whatsapp_enabled: bool = False
@@ -97,6 +98,9 @@ class Settings(BaseSettings):
 
     # External WhatsApp API key (for Soko, FX, Cards to call our bridge)
     whatsapp_api_key: str = ""
+
+    # WhatsApp webhook shared secret (for verifying incoming webhook requests)
+    whatsapp_webhook_secret: str = ""
 
     # Soko provisioning key (shared secret for Soko ↔ Sanaa ↔ WhatsJet)
     soko_provision_key: str = ""
