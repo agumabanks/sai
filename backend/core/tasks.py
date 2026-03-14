@@ -47,6 +47,11 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=7, minute=0),  # 7 AM EAT
     },
 
+    'news-newsletter': {
+        'task': 'core.tasks.send_news_newsletter',
+        'schedule': crontab(hour=7, minute=15),  # 7:15 AM EAT — dedicated Sanaa Media News email with PDF
+    },
+
     # ===== DAILY MAINTENANCE =====
     'memory-prune': {
         'task': 'core.tasks.memory_prune',
@@ -59,6 +64,40 @@ app.conf.beat_schedule = {
     'llm-usage-report': {
         'task': 'core.tasks.llm_usage_report',
         'schedule': crontab(hour=6, minute=0),  # 6 AM EAT — summarize LLM usage
+    },
+
+    # ===== NEW JARVIS TASKS =====
+    'reflection-agent': {
+        'task': 'core.tasks.reflection_scan',
+        'schedule': crontab(hour=3, minute=30),  # 3:30 AM EAT — learn user behavior
+    },
+    'site-watcher': {
+        'task': 'core.tasks.site_watcher_check',
+        'schedule': 21600,  # Every 6 hours
+    },
+
+    # ===== ML SELF-LEARNING =====
+    'ml-skill-analysis-hourly': {
+        'task': 'core.tasks.ml_skill_analysis',
+        'schedule': 3600,  # Every hour — aggregate hourly metrics
+        'args': ('hourly',),
+    },
+    'ml-skill-analysis-daily': {
+        'task': 'core.tasks.ml_skill_analysis',
+        'schedule': crontab(hour=4, minute=0),  # 4 AM EAT — full daily analysis
+        'args': ('daily',),
+    },
+
+    # ===== LEARNING PROMOTION =====
+    'learning-promotion-check': {
+        'task': 'core.tasks.learning_promotion_check',
+        'schedule': crontab(hour='*/6', minute=15),  # Every 6 hours at :15
+    },
+
+    # ===== CODE QUALITY =====
+    'code-quality-sweep': {
+        'task': 'core.tasks.code_quality_sweep',
+        'schedule': crontab(hour=2, minute=30, day_of_week='mon'),  # Weekly Monday 2:30 AM EAT
     },
 }
 
@@ -310,6 +349,31 @@ def send_daily_report():
 
 
 @app.task
+def send_news_newsletter():
+    """Generate and send the dedicated Sanaa Media News newsletter with PDF attachment."""
+    from core.agents.news_agent import NewsAgent
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        try:
+            agent = NewsAgent()
+            summary = await agent.get_daily_summary()
+            if summary and len(summary.strip()) > 100:
+                success = await agent.send_newsletter(summary)
+                if success:
+                    logger.info("Sanaa Media News newsletter sent successfully")
+                else:
+                    logger.error("Sanaa Media News newsletter send returned False")
+            else:
+                logger.warning(f"News summary too short to send: {len(summary) if summary else 0} chars")
+        except Exception as e:
+            logger.error(f"News newsletter task failed: {e}", exc_info=True)
+
+    _run_async(_run())
+
+
+@app.task
 def check_email_inbox():
     """Check email inbox"""
     from core.agents.email_agent import EmailInboxAgent
@@ -325,7 +389,7 @@ def check_email_inbox():
 def memory_prune():
     """Prune stale agent memories — runs daily at 2 AM."""
     async def _run():
-        from core.memory import MemoryManager
+        from core.memory.manager import MemoryManager
         from core.database import AuditLog
 
         manager = MemoryManager()
@@ -418,6 +482,107 @@ def llm_usage_report():
             await reporter.send_alert_email(
                 subject=f"[Sanaa AI] LLM Usage: {total_requests} requests, ${total_cost:.2f}",
                 body=summary,
+            )
+
+    _run_async(_run())
+
+
+@app.task
+def ml_skill_analysis(period='daily'):
+    """Run ML self-learning analysis to aggregate metrics, detect anomalies, and learn parameters."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.intelligence.ml_engine import ml_engine
+        from core.database import AuditLog
+
+        try:
+            if period == 'daily':
+                summary = await ml_engine.run_full_analysis()
+            else:
+                results = await ml_engine.aggregate_metrics(period)
+                summary = {"period": period, "skills_aggregated": len(results)}
+
+            await AuditLog.log(
+                actor="celery:ml_analysis",
+                action="ml.analysis_complete",
+                resource="skill_metrics",
+                details=summary,
+                success=True,
+            )
+            logger.info(f"[ML] {period} analysis complete: {summary}")
+        except Exception as e:
+            logger.error(f"[ML] {period} analysis failed: {e}")
+            await AuditLog.log(
+                actor="celery:ml_analysis",
+                action="ml.analysis_failed",
+                resource="skill_metrics",
+                details={"error": str(e), "period": period},
+                success=False,
+            )
+
+    _run_async(_run())
+
+
+@app.task
+def code_quality_sweep():
+    """Weekly automated code quality sweep across all Sanaa projects."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        try:
+            from skills.code_quality.handler import CodeQualitySkill
+            from core.skills.base import SkillContext
+            skill = CodeQualitySkill()
+            ctx = SkillContext(session_id="celery:code_quality", channel="system", sender_id="scheduler")
+            result = await skill.execute({"action": "sweep", "dry_run": False, "auto_commit": False}, ctx)
+            logger.info(f"[CodeQuality] Sweep complete: {result.output[:300]}")
+            from core.database import AuditLog
+            await AuditLog.log(
+                actor="celery:code_quality",
+                action="code_quality.sweep",
+                resource="codebase",
+                details={"output": result.output[:500]},
+                success=result.success,
+            )
+        except Exception as e:
+            logger.error(f"[CodeQuality] Sweep failed: {e}", exc_info=True)
+
+    _run_async(_run())
+
+
+@app.task
+def learning_promotion_check():
+    """Run learning promotion cycle — detect recurring patterns and promote to system context."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.memory.promotion import PromotionEngine
+        from core.database import AuditLog
+
+        try:
+            engine = PromotionEngine()
+            promoted_count = await engine.run_promotion_cycle()
+
+            await AuditLog.log(
+                actor="celery:promotion_check",
+                action="learning.promotion_check",
+                resource="learning_logs",
+                details={"promoted_count": promoted_count},
+                success=True,
+            )
+            logger.info(f"[Promotion] Cycle complete: {promoted_count} entries promoted.")
+        except Exception as e:
+            logger.error(f"[Promotion] Promotion check failed: {e}", exc_info=True)
+            await AuditLog.log(
+                actor="celery:promotion_check",
+                action="learning.promotion_check_failed",
+                resource="learning_logs",
+                details={"error": str(e)},
+                success=False,
             )
 
     _run_async(_run())

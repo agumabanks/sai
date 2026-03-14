@@ -22,39 +22,22 @@ def estimate_tokens(text_str: str) -> int:
     return len(text_str) // TOKEN_RATIO
 
 
-SYSTEM_PROMPT = """You are Sanaa AI, an autonomous operations agent managing the Sanaa fintech platform ecosystem.
+SYSTEM_PROMPT = """You are Sanaa AI, an autonomous intelligence assistant built by Sanaa.
 
-Your operator is Banks, the founder of Sanaa — a comprehensive fintech platform based in Uganda serving East Africa.
+You help users with system operations, monitoring, intelligence briefings, and general questions.
+You can execute skills, check system status, and provide insights.
 
-SANAA ECOSYSTEM:
-- cards.sanaa.ug — Card/Identity platform (Laravel 11)
-- fx.sanaa.co — FX Trading platform (Laravel 11)
-- soko.sanaa.ug — Soko 24 Marketplace (Laravel 11)
-- sanaa.co — Main website
-- ai.sanaa.co — This operations dashboard
-- Tech stack: Laravel 11, PostgreSQL, Redis, Filament Admin, Flutter mobile apps
-- Server: Ubuntu Linux VPS (sanaa-vps)
+CAPABILITIES:
+- System monitoring: CPU, memory, disk, service status
+- 22+ operational skills for automation
+- Intelligence briefings and news analysis
+- Watchdog alerts and anomaly detection
 
-YOUR CAPABILITIES:
-1. Monitor server health (CPU, RAM, Disk, Services, Docker)
-2. Monitor all Sanaa web applications for errors and downtime
-3. Read and triage Banks' email inbox
-4. Execute approved operations (deploy, restart, database queries)
-5. Test web applications (load pages, check forms, verify APIs)
-6. Generate daily operations reports
-7. Monitor connected devices (MacBook, phones)
-8. Analyze Laravel logs for errors and patterns
-9. Search for relevant fintech/tech news
-
-YOUR RULES:
-- ALWAYS explain what you're about to do before doing it
-- For destructive operations (delete, drop, modify configs), ALWAYS require approval
-- Read-only operations (status, logs, tests) can auto-execute
-- Assess severity and notify Banks appropriately
-- Be concise but thorough
-- Think like a senior DevOps engineer + executive assistant
-- When in doubt, ask rather than act
-- Log everything
+RULES:
+1. For casual messages (greetings, general questions), respond naturally and conversationally.
+2. Only invoke skills when the user specifically asks about system state, operations, or data.
+3. Be concise and direct. Do not over-explain or run unnecessary checks.
+4. If you use a skill, briefly state why before executing.
 """
 
 
@@ -76,9 +59,10 @@ class ContextAssembler:
         Build the context messages in priority order:
         1. System prompt (never trimmed)
         2. Relevant memories (semantic search)
-        3. Infrastructure knowledge
-        4. Recent conversation history
-        5. Current user message
+        3. Promoted learnings (recurring patterns from learning logs)
+        4. Infrastructure knowledge
+        5. Recent conversation history
+        6. Current user message
         """
         messages = []
         used_tokens = 0
@@ -103,7 +87,16 @@ class ContextAssembler:
                     messages.append({"role": "system", "content": memory_text})
                     budget_remaining -= mem_tokens
 
-        # 3. Infrastructure knowledge
+        # 3. Promoted learnings (recurring patterns from learning logs)
+        if budget_remaining > 300:
+            promoted_text = await self._get_promoted_learnings()
+            if promoted_text:
+                promo_tokens = estimate_tokens(promoted_text)
+                if promo_tokens < budget_remaining:
+                    messages.append({"role": "system", "content": promoted_text})
+                    budget_remaining -= promo_tokens
+
+        # 4. Infrastructure knowledge
         if budget_remaining > 300:
             knowledge = await self._get_relevant_knowledge(user_message)
             if knowledge:
@@ -112,7 +105,7 @@ class ContextAssembler:
                     messages.append({"role": "system", "content": knowledge})
                     budget_remaining -= know_tokens
 
-        # 4. Recent conversation history
+        # 5. Recent conversation history
         if session_id and budget_remaining > 500:
             history = await self._get_history(session_id, limit=include_history)
             # Add history newest-first until budget exhausted, then reverse
@@ -126,7 +119,7 @@ class ContextAssembler:
                     break
             messages.extend(history_to_add)
 
-        # 5. Current user message
+        # 6. Current user message
         messages.append({"role": "user", "content": user_message})
 
         logger.debug(
@@ -135,16 +128,30 @@ class ContextAssembler:
         )
         return messages
 
+    async def _get_promoted_learnings(self) -> Optional[str]:
+        """Fetch promoted learning entries for inclusion in system context."""
+        try:
+            from core.memory.promotion import PromotionEngine
+            engine = PromotionEngine()
+            context_text = await engine.get_promoted_context_text()
+            return context_text if context_text else None
+        except Exception as e:
+            logger.warning(f"Failed to fetch promoted learnings: {e}")
+            return None
+
     async def _get_relevant_knowledge(self, query: str) -> Optional[str]:
-        """Fetch relevant infrastructure facts from system_knowledge table."""
-        # Simple keyword matching against system knowledge
+        """Fetch relevant infrastructure facts, plus user profile and project context from system_knowledge table."""
+        # Fetch matching system facts
         sql = text("""
             SELECT domain, key, value
             FROM system_knowledge
             WHERE to_tsvector('english', key || ' ' || value)
                   @@ plainto_tsquery('english', :query)
-            ORDER BY last_verified DESC NULLS LAST
-            LIMIT 5
+               OR domain IN ('user_profile', 'project_context')
+            ORDER BY
+               CASE WHEN domain IN ('user_profile', 'project_context') THEN 0 ELSE 1 END,
+               last_verified DESC NULLS LAST
+            LIMIT 15
         """)
         async with AsyncSessionLocal() as session:
             result = await session.execute(sql, {"query": query})
@@ -154,7 +161,7 @@ class ContextAssembler:
             return None
 
         lines = [f"- [{r['domain']}] {r['key']}: {r['value']}" for r in rows]
-        return "Infrastructure context:\n" + "\n".join(lines)
+        return "System & Profile Context:\n" + "\n".join(lines)
 
     async def _get_history(self, session_id: str, limit: int = 10) -> list[dict]:
         """Get recent conversation history for a session."""
