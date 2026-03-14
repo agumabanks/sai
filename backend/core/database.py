@@ -760,6 +760,46 @@ class ScheduledPost(Base, ActiveRecordMixin):
     )
 
 
+# ==================== EMAIL CAMPAIGNS ====================
+
+class AudienceSegment(Base, ActiveRecordMixin):
+    """Reusable audience segment definitions for email marketing."""
+    __tablename__ = "audience_segments"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    criteria = Column(JSON, nullable=False)  # e.g. {"role": "admin", "region": "East Africa"}
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_audience_segments_name", "name"),
+    )
+
+
+class EmailCampaign(Base, ActiveRecordMixin):
+    """Email marketing campaigns with subject, body template, and segment."""
+    __tablename__ = "email_campaigns"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(300), nullable=False)
+    subject = Column(String(500), nullable=False)
+    body_template = Column(Text, nullable=False)
+    segment_id = Column(Integer, nullable=True)  # FK to audience_segments
+    status = Column(String(20), default="draft", nullable=False)  # draft, sending, sent, failed
+    recipients_count = Column(Integer, default=0)
+    sent_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_email_campaigns_status", "status"),
+        Index("idx_email_campaigns_created", "created_at"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():

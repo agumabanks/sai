@@ -629,3 +629,38 @@ def learning_promotion_check():
             )
 
     _run_async(_run())
+
+
+@app.task
+def send_email_campaign(campaign_id: int):
+    """Deliver an email campaign via SMTP. Called by email_marketing skill."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from skills.email_marketing.handler import EmailMarketingSkill
+        from core.database import AuditLog
+
+        try:
+            skill = EmailMarketingSkill()
+            await skill._deliver_campaign(campaign_id)
+
+            await AuditLog.log(
+                actor="celery:email_campaign",
+                action="email_campaign.delivered",
+                resource=f"campaign:{campaign_id}",
+                details={"campaign_id": campaign_id},
+                success=True,
+            )
+            logger.info(f"[EmailCampaign] Campaign {campaign_id} delivered successfully.")
+        except Exception as e:
+            logger.error(f"[EmailCampaign] Campaign {campaign_id} delivery failed: {e}", exc_info=True)
+            await AuditLog.log(
+                actor="celery:email_campaign",
+                action="email_campaign.delivery_failed",
+                resource=f"campaign:{campaign_id}",
+                details={"campaign_id": campaign_id, "error": str(e)},
+                success=False,
+            )
+
+    _run_async(_run())
