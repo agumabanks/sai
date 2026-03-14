@@ -110,6 +110,12 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM EAT
         'kwargs': {'target': 'all'},
     },
+
+    # ===== TENANT HEALTH MONITORING =====
+    'tenant-health-update': {
+        'task': 'core.tasks.update_tenant_health',
+        'schedule': 300,  # Every 5 minutes
+    },
 }
 
 
@@ -732,5 +738,52 @@ def run_backup(target: str = "all"):
             )
         except Exception as e:
             logger.error(f"[Backup] Failed to write audit log: {e}")
+
+    _run_async(_run())
+
+
+@app.task
+def update_tenant_health():
+    """Run cross-service health monitoring for all tenants. Runs every 5 minutes."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.tenant_health import TenantHealthChecker
+        from core.database import AuditLog
+
+        try:
+            checker = TenantHealthChecker()
+            health_data = await checker.run_health_update_cycle()
+
+            await AuditLog.log(
+                actor="celery:tenant_health",
+                action="tenant.health_update",
+                resource="tenants",
+                details={
+                    "overall_score": health_data["overall_score"],
+                    "overall_status": health_data["overall_status"],
+                    "active_tenants": health_data["active_tenants"],
+                    "total_tenants": health_data["total_tenants"],
+                },
+                success=True,
+            )
+            logger.info(
+                f"[TenantHealth] Update complete: "
+                f"{health_data['overall_status']} ({health_data['overall_score']})"
+            )
+        except Exception as e:
+            logger.error(f"[TenantHealth] Health update failed: {e}", exc_info=True)
+            try:
+                from core.database import AuditLog
+                await AuditLog.log(
+                    actor="celery:tenant_health",
+                    action="tenant.health_update_failed",
+                    resource="tenants",
+                    details={"error": str(e)},
+                    success=False,
+                )
+            except Exception:
+                pass
 
     _run_async(_run())
