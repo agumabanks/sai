@@ -20,6 +20,7 @@ from sqlalchemy import select, delete, update
 
 from core.config import get_settings
 from core.database import SystemKnowledge, ActiveRecordMixin
+from core.utils.sanitize import sanitize_service_name, sanitize_ip_address, sanitize_file_path
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -137,10 +138,15 @@ class SelfHealer:
         # Detection of Resolved Issues (Recovery)
         # Any metric that was checked but is NOT in the current events list is considered healthy.
         if checked_metrics:
+            memory_was_restored = False
             for metric in checked_metrics:
                 if metric not in active_metrics:
                     # Reset failure counter in DB if it was previously > 0
                     await self._reset_failure_level(metric)
+                    # When memory pressure fully clears, restore any shed services
+                    if metric == "memory.percent" and not memory_was_restored:
+                        memory_was_restored = True
+                        await self._restore_shed_services()
 
         return self.actions_taken
 
@@ -197,27 +203,122 @@ class SelfHealer:
         await self._restart_service(service, event)
 
     async def _escalate_load_shedding(self, target: str, event: dict, level: int):
-        """Tier 3: Stop non-critical background services to stabilize core system."""
-        logger.warning(f"Healer: Tier 3 escalation - LOAD SHEDDING for {target} (attempt {level})")
-        
-        non_critical = ["antigravity-beat", "whatsjet-worker"] # Example services to shed
-        
-        for svc in non_critical:
-            try:
-                subprocess.run(f"systemctl stop {svc}", shell=True, timeout=10)
-                self.actions_taken.append({
-                    "action": "load_shedding",
-                    "target": svc,
-                    "trigger": f"High pressure on {target}",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "success": True
-                })
-            except Exception as e:
-                logger.error(f"Failed to shed {svc}: {e}")
+        """Tier 3: Temporarily suspend non-critical services to free memory.
 
-        # Final attempt to restart the core target
+        RULE: antigravity-beat is NEVER shed. It is the task scheduler — stopping it
+        silently kills all automation (newsletters, watchdog, monitoring) with no visible
+        crash. If beat is stopped and pressure stays high, the healer can no longer
+        receive its own watchdog results, creating a blind spot.
+
+        Shed services are recorded in SystemKnowledge so they can be restored
+        automatically once pressure drops (see _restore_shed_services).
+        """
+        import json
+        logger.warning(f"Healer: Tier 3 escalation - LOAD SHEDDING for {target} (attempt {level})")
+
+        # NEVER include antigravity-beat here.
+        # Shed ollama (high RAM, not essential) and whatsjet-worker (optional SaaS layer).
+        non_critical = ["ollama", "whatsjet-worker"]
+
+        shed_now = []
+        for svc in non_critical:
+            # Only shed if currently active — avoid noisy no-op actions
+            safe_svc = sanitize_service_name(svc)
+            status = subprocess.run(
+                ["systemctl", "is-active", safe_svc],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            if status != "active":
+                continue
+            try:
+                result = subprocess.run(
+                    ["systemctl", "stop", safe_svc], timeout=10, capture_output=True,
+                )
+                if result.returncode == 0:
+                    shed_now.append(svc)
+                    logger.info(f"Healer: shed '{svc}' to relieve {target} pressure")
+                    self.actions_taken.append({
+                        "action": "load_shedding",
+                        "target": svc,
+                        "trigger": f"High pressure on {target} (attempt {level})",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "success": True,
+                    })
+            except Exception as e:
+                logger.error(f"Healer: failed to shed '{svc}': {e}")
+
+        # Persist shed list so recovery can restore them when pressure drops
+        if shed_now:
+            try:
+                existing_json = await SystemKnowledge.get_pref("healer.shed_services", default=None)
+                existing = json.loads(existing_json) if existing_json else []
+                merged = list(set(existing + shed_now))
+                await SystemKnowledge.set_pref(
+                    "healer.shed_services",
+                    json.dumps(merged),
+                    source="healer",
+                    domain="preference",
+                )
+            except Exception as e:
+                logger.warning(f"Healer: could not persist shed list: {e}")
+
+        # Final attempt to restart the core target if this was a service failure, not RAM
         if target != "memory_pressure":
             await self._restart_service(target, event)
+
+    async def _restore_shed_services(self):
+        """Restore services that were previously load-shed once pressure has dropped.
+
+        Called automatically by process_events() when the memory.percent metric
+        is healthy (present in checked_metrics but absent from active alert events).
+        This is how Sanaa AI teaches itself: shed when overloaded, restore when stable.
+        """
+        import json
+        try:
+            shed_json = await SystemKnowledge.get_pref("healer.shed_services", default=None)
+            if not shed_json:
+                return
+            shed_services = json.loads(shed_json)
+            if not shed_services:
+                return
+
+            logger.info(f"Healer: pressure resolved — restoring shed services: {shed_services}")
+            restored = []
+
+            for svc in shed_services:
+                if svc not in SAFE_TO_RESTART:
+                    continue
+                try:
+                    safe_svc = sanitize_service_name(svc)
+                    result = subprocess.run(
+                        ["systemctl", "start", safe_svc],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if result.returncode == 0:
+                        restored.append(svc)
+                        logger.info(f"Healer: restored shed service '{svc}'")
+                        self.actions_taken.append({
+                            "action": "restore_service",
+                            "target": svc,
+                            "trigger": "Memory pressure resolved — auto-restore",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "success": True,
+                        })
+                    else:
+                        logger.warning(f"Healer: could not restore '{svc}': {result.stderr.strip()}")
+                except Exception as e:
+                    logger.error(f"Healer: error restoring '{svc}': {e}")
+
+            # Update shed list — keep only those that failed to restore
+            remaining = [s for s in shed_services if s not in restored]
+            await SystemKnowledge.set_pref(
+                "healer.shed_services",
+                json.dumps(remaining),
+                source="healer",
+                domain="preference",
+            )
+        except Exception as e:
+            logger.warning(f"Healer: _restore_shed_services failed: {e}")
 
     async def _escalate_sos(self, target: str, event: dict, level: int):
         """Tier 4: Send real emergency WhatsApp notification via WhatsJet."""
@@ -284,18 +385,22 @@ class SelfHealer:
         }
         try:
             result = subprocess.run(
-                "ps aux --sort=-%mem | head -10",
-                shell=True, capture_output=True, text=True, timeout=10,
+                ["ps", "aux", "--sort=-%mem"],
+                capture_output=True, text=True, timeout=10,
             )
-            top_lines = [ln for ln in result.stdout.splitlines()[1:] if ln.strip()]
+            all_lines = result.stdout.splitlines()
+            top_lines = [ln for ln in all_lines[1:11] if ln.strip()]
             action["details"].append({"top_processes": top_lines[:5]})
 
             # Conservative remediation: restart known non-critical workers if they are top offenders.
-            candidates = ["antigravity-beat", "antigravity-worker", "php8.4-fpm", "ollama"]
+            # NOTE: antigravity-beat is intentionally excluded — restarting the scheduler
+            # during memory pressure creates scheduling storms and breaks task sequencing.
+            candidates = ["antigravity-worker", "php8.4-fpm", "ollama"]
             for svc in candidates:
                 if any(svc in line for line in top_lines):
                     try:
-                        subprocess.run(f"systemctl restart {svc}", shell=True, timeout=20, capture_output=True, text=True)
+                        safe_svc = sanitize_service_name(svc)
+                        subprocess.run(["systemctl", "restart", safe_svc], timeout=20, capture_output=True, text=True)
                         action["details"].append(f"Restarted {svc} to release memory")
                     except Exception as e:
                         action["details"].append(f"Failed restart {svc}: {e}")
@@ -325,9 +430,10 @@ class SelfHealer:
         }
 
         try:
+            safe_service = sanitize_service_name(service)
             result = subprocess.run(
-                f"systemctl restart {service}",
-                shell=True, capture_output=True, text=True, timeout=30,
+                ["systemctl", "restart", safe_service],
+                capture_output=True, text=True, timeout=30,
             )
             action["success"] = result.returncode == 0
             action["output"] = result.stderr.strip() or result.stdout.strip()
@@ -357,9 +463,10 @@ class SelfHealer:
         }
 
         try:
+            safe_ip = sanitize_ip_address(ip)
             result = subprocess.run(
-                f"fail2ban-client set sshd unbanip {ip}",
-                shell=True, capture_output=True, text=True, timeout=10,
+                ["fail2ban-client", "set", "sshd", "unbanip", safe_ip],
+                capture_output=True, text=True, timeout=10,
             )
             action["success"] = result.returncode == 0
             action["output"] = result.stdout.strip() or result.stderr.strip()
@@ -388,25 +495,42 @@ class SelfHealer:
         for log_dir in log_dirs:
             try:
                 result = subprocess.run(
-                    f"find {log_dir} -name '*.log' -size +100M -type f 2>/dev/null",
-                    shell=True, capture_output=True, text=True, timeout=10,
+                    ["find", log_dir, "-name", "*.log", "-size", "+100M", "-type", "f"],
+                    capture_output=True, text=True, timeout=10,
                 )
                 for filepath in result.stdout.strip().split("\n"):
                     if not filepath.strip():
                         continue
-                    # Truncate (keep last 1000 lines)
-                    subprocess.run(
-                        f"tail -1000 '{filepath}' > '{filepath}.tmp' && mv '{filepath}.tmp' '{filepath}'",
-                        shell=True, timeout=10,
-                    )
-                    action["details"].append(f"Truncated {filepath}")
-                    cleared_mb += 50  # approximate
+                    # Validate the file path before operating on it
+                    try:
+                        safe_path = sanitize_file_path(filepath.strip())
+                    except ValueError:
+                        continue
+                    # Truncate (keep last 1000 lines) — two-step without shell
+                    try:
+                        tail_result = subprocess.run(
+                            ["tail", "-1000", safe_path],
+                            capture_output=True, timeout=10,
+                        )
+                        if tail_result.returncode == 0 and tail_result.stdout:
+                            tmp_path = safe_path + ".tmp"
+                            with open(tmp_path, "wb") as f:
+                                f.write(tail_result.stdout)
+                            import os
+                            os.replace(tmp_path, safe_path)
+                            action["details"].append(f"Truncated {safe_path}")
+                            cleared_mb += 50  # approximate
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
         # Clean apt cache
         try:
-            subprocess.run("apt-get clean 2>/dev/null", shell=True, timeout=30)
+            subprocess.run(
+                ["apt-get", "clean"],
+                capture_output=True, timeout=30,
+            )
             action["details"].append("Cleaned apt cache")
         except Exception:
             pass
@@ -414,8 +538,8 @@ class SelfHealer:
         # Clean old journal logs (keep 3 days)
         try:
             subprocess.run(
-                "journalctl --vacuum-time=3d 2>/dev/null",
-                shell=True, timeout=30,
+                ["journalctl", "--vacuum-time=3d"],
+                capture_output=True, timeout=30,
             )
             action["details"].append("Vacuumed journal to 3 days")
         except Exception:

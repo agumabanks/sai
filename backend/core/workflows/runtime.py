@@ -332,7 +332,11 @@ class WorkflowRuntime:
         )
 
     async def _run_shell_step(self, params: dict) -> StepResult:
-        """Execute a shell command (sandboxed)."""
+        """Execute a shell command (sandboxed).
+
+        Security: Uses subprocess with shell=False and argument lists to
+        prevent shell injection. Commands are parsed via sanitize_command_string().
+        """
         command = params.get("command", "")
         if not command:
             return StepResult(step_id="", success=False, error="No command specified")
@@ -345,9 +349,20 @@ class WorkflowRuntime:
                 output=str(output)[:2000],
             )
 
-        # Fallback: direct execution (limited safety)
-        proc = await asyncio.create_subprocess_shell(
-            command,
+        # Sanitize and split command into argument list (shell=False)
+        from core.utils.sanitize import sanitize_command_string
+
+        try:
+            cmd_args = sanitize_command_string(command)
+        except ValueError as e:
+            return StepResult(
+                step_id="",
+                success=False,
+                error=f"Command blocked by sanitizer: {e}",
+            )
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -539,7 +554,7 @@ class WorkflowRuntime:
     async def _load_state(self, run_id: int) -> Optional[WorkflowState]:
         """Load workflow state from the database."""
         try:
-            run = await WorkflowRun.get_by_id(run_id)
+            run = await WorkflowRun.get(run_id)
             if not run:
                 return None
 

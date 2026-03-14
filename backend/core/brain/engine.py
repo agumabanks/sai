@@ -128,14 +128,104 @@ class Brain:
             brain=self,
             memory=self.memory,
         )
+
+        _start = time.time()
         result = await self.skill_registry.execute(name, args, context)
+        _elapsed_ms = int((time.time() - _start) * 1000)
+
+        # Track for learned shortcuts
+        if result.success and execution_mode == "brain":
+            await self._record_skill_invocation_for_shortcuts(name, args, session_id)
+
+        # Record execution in skill_runs for ML analysis
+        await self._record_skill_run(
+            skill_name=name,
+            args=args,
+            result=result,
+            elapsed_ms=_elapsed_ms,
+            session_id=session_id,
+            execution_mode=execution_mode,
+        )
+
+        # Log skill errors to learning system for self-improvement
+        if not result.success and result.error:
+            try:
+                from core.intelligence.learning_logs import learning_log_manager
+                await learning_log_manager.log_skill_error(
+                    skill_name=name,
+                    action=args.get("action", ""),
+                    error=result.error,
+                    args=args,
+                    session_id=session_id,
+                )
+            except Exception:
+                pass
+
         return {
             "success": result.success,
             "output": result.output,
             "error": result.error,
             "data": result.data,
-            "execution_time_ms": result.execution_time_ms,
+            "execution_time_ms": _elapsed_ms or result.execution_time_ms,
         }
+
+    async def _record_skill_invocation_for_shortcuts(self, name: str, args: dict, session_id: str):
+        """Record skill usage to optionally auto-suggest shortcuts for repetitive tasks."""
+        try:
+            from core.database import SystemKnowledge
+            from sqlalchemy.dialects.postgresql import insert
+            
+            # Use the skill name and sorted argument keys as a signature
+            arg_signature = ",".join(sorted(args.keys()))
+            signature = f"{name}({arg_signature})"
+            
+            key = f"shortcut_tracker.{signature}"
+            current_count_str = await SystemKnowledge.get_pref(key, default="0", domain="behavior")
+            count = int(current_count_str) + 1
+            
+            # Simple heuristic: If we do the exact same shape 5 times, it might be a shortcut
+            if count == 5:
+                suggestion = (
+                    f"💡 I noticed you frequently use the `{name}` skill with arguments {list(args.keys())}. "
+                    f"Would you like me to create a shortcut or alias for this?"
+                )
+                # Store the suggestion in the context buffer so the brain can mention it
+                # For now, just log it. A fuller implementation would inject this into ContextAssembler.
+                logger.info(f"Learned Shortcut Suggestion: {suggestion}")
+            
+            await SystemKnowledge.set_pref(key, str(count), source="brain", domain="behavior")
+        except Exception as e:
+            logger.warning(f"Failed to record shortcut logic: {e}")
+
+    async def _record_skill_run(
+        self,
+        skill_name: str,
+        args: dict,
+        result,
+        elapsed_ms: int,
+        session_id: str,
+        execution_mode: str,
+    ):
+        """Record skill execution to skill_runs table for ML analysis."""
+        try:
+            from core.database import SkillRun, utcnow
+            status = "success" if result.success else "failed"
+            if result.error and "timeout" in result.error.lower():
+                status = "timeout"
+
+            await SkillRun.create(
+                skill_name=skill_name,
+                action=args.get("action", ""),
+                triggered_by=execution_mode,
+                input_data=args,
+                output_data={"output": result.output[:500] if result.output else "", "data": result.data},
+                status=status,
+                error_message=result.error if not result.success else None,
+                duration_ms=elapsed_ms,
+                completed_at=utcnow(),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record skill run for ML: {e}")
 
     def get_effective_tool_provider(self) -> str:
         return effective_brain_provider_name(
@@ -195,9 +285,8 @@ class Brain:
                 prompt, session_id=session_id, channel=channel
             )
         else:
-            # Simple system prompt if no memory context
             messages = [
-                {"role": "system", "content": "You are the central brain of Sanaa AI."},
+                {"role": "system", "content": "You are Sanaa AI, an autonomous intelligence assistant. Be concise, helpful, and conversational."},
                 {"role": "user", "content": prompt},
             ]
 
@@ -227,12 +316,7 @@ class Brain:
         session_id: Optional[str],
         channel: str,
     ) -> list[dict]:
-        """Optional one-shot tool loop using JSON tool directives in model output.
-
-        The brain asks the model whether a skill call is needed. If it returns a
-        JSON tool request, Sanaa executes the skill and appends the result back into
-        the conversation before the final answer is generated.
-        """
+        """One-shot or multi-shot tool loop using JSON tool directives in model output."""
         if not self._should_offer_skills(original_prompt, channel):
             return messages
 
@@ -240,85 +324,73 @@ class Brain:
         if not self.skill_registry.count:
             return messages
 
-        visible_skills = []
-        visible_tool_defs = []
-        visible_names: set[str] = set()
         provider = self.get_effective_tool_provider()
-        for skill in self.skill_registry._skills.values():
-            access = await evaluate_skill_access(skill=skill, invocation="brain", provider=provider, channel=channel or "web")
-            if access.get("allowed"):
-                visible_names.add(skill.name)
-                visible_skills.append(
-                    {
+        
+        # Allow up to 3 tool calls to chain diagnostics
+        for loop_idx in range(3):
+            visible_skills = []
+            visible_tool_defs = []
+            visible_names: set[str] = set()
+            
+            for skill in self.skill_registry._skills.values():
+                access = await evaluate_skill_access(skill=skill, invocation="brain", provider=provider, channel=channel or "web")
+                if access.get("allowed"):
+                    visible_names.add(skill.name)
+                    visible_skills.append({
                         "name": skill.name,
                         "description": skill.description,
-                        "version": getattr(skill, "version", "1.0.0"),
-                        "permissions": getattr(skill, "permissions", []),
-                        "requires_approval": bool(getattr(skill, "requires_approval", False)),
                         "tags": getattr(skill, "tags", []),
-                        "groups": access.get("groups", []),
-                        "safety_tier": access.get("safety_tier", "read_only"),
-                    }
-                )
-                visible_tool_defs.append(skill.to_tool_definition())
+                    })
+                    visible_tool_defs.append(skill.to_tool_definition())
 
-        if not visible_names:
-            return messages
+            if not visible_names:
+                break
 
-        tool_prompt = (
-            "You can request one Sanaa skill call before answering if it will improve accuracy.\n"
-            "If you need a skill, reply ONLY JSON in this format:\n"
-            '{"tool":"skill_name","args":{"param":"value"},"reason":"why"}\n'
-            "If no skill is needed, reply normally.\n\n"
-            "Only choose from the allowed tools below.\n\n"
-            "Available skills:\n"
-            f"{json.dumps(visible_skills, indent=2)}\n\n"
-            "Tool schemas:\n"
-            f"{json.dumps(visible_tool_defs, indent=2)}"
-        )
-        tool_messages = [{"role": "system", "content": tool_prompt}] + messages
+            tool_prompt = (
+                f"Iteration {loop_idx + 1}/3. You can request ONE skill call if needed for accuracy.\n"
+                "If you need a skill, reply ONLY JSON:\n"
+                '{"tool":"name","args":{"param":"value"},"reason":"why"}\n'
+                "If no (more) skills are needed, reply 'READY'.\n\n"
+                "Allowed tools:\n" + json.dumps(visible_skills, indent=2)
+            )
+            
+            # Use a slightly complex model for the tool loop itself
+            loop_messages = [{"role": "system", "content": tool_prompt}] + messages
+            probe = await self._call_with_failover(loop_messages, max(tier, 2))
+            
+            if "READY" in probe.upper() and "{" not in probe:
+                break
+                
+            skill_call = self._parse_skill_call(probe, allowed_tool_names=visible_names)
+            if not skill_call:
+                break
 
-        probe = await self._call_with_failover(tool_messages, min(tier, 2))
-        skill_call = self._parse_skill_call(probe, allowed_tool_names=visible_names)
-        if not skill_call:
-            # No tool requested; keep original messages and let final response happen as usual.
-            return messages
+            skill_name = skill_call.get("tool")
+            skill_args = skill_call.get("args") or {}
 
-        skill_name = skill_call.get("tool") or ""
-        skill_args = skill_call.get("args") or {}
-        if not isinstance(skill_args, dict):
-            skill_args = {}
+            exec_result = await self.execute_skill(
+                name=skill_name,
+                args=skill_args,
+                session_id=session_id or "",
+                channel=channel or "web",
+                sender_id="brain",
+                execution_mode="brain",
+            )
 
-        exec_result = await self.execute_skill(
-            name=skill_name,
-            args=skill_args,
-            session_id=session_id or "",
-            channel=channel or "web",
-            sender_id="brain",
-            execution_mode="brain",
-        )
-
-        tool_feedback = {
-            "skill": skill_name,
-            "args": skill_args,
-            "success": exec_result.get("success", False),
-            "output": (exec_result.get("output") or "")[:4000],
-            "error": exec_result.get("error") or "",
-            "data": exec_result.get("data") or {},
-            "execution_time_ms": exec_result.get("execution_time_ms", 0),
-        }
-
-        followup = list(messages)
-        followup.append(
-            {
-                "role": "system",
-                "content": (
-                    "Sanaa skill execution result (use this to answer precisely; do not invent data):\n"
-                    f"{json.dumps(tool_feedback, indent=2, default=str)}"
-                ),
+            tool_feedback = {
+                "skill": skill_name,
+                "success": exec_result.get("success", False),
+                "output": (exec_result.get("output") or "")[:5000],
+                "error": exec_result.get("error") or "",
             }
-        )
-        return followup
+
+            messages.append({"role": "assistant", "content": probe})
+            messages.append({
+                "role": "system",
+                "content": f"Skill result:\n{json.dumps(tool_feedback, indent=2, default=str)}"
+            })
+
+        return messages
 
     async def _call_with_failover(self, messages: list, starting_tier: int) -> str:
         """Try models from starting tier down to tier 1 with failover."""
@@ -327,7 +399,12 @@ class Brain:
                 flat_prompt = self._flatten_messages_for_clade(messages)
                 result = await self.sanaa_clade.ask(flat_prompt)
                 if result.success and result.output:
-                    return result.output
+                    output = result.output
+                    # Strip provider error JSON that leaks from the CLI
+                    import re as _re
+                    output = _re.sub(r'\{\s*"type"\s*:\s*"error".*?"request_id"\s*:\s*"[^"]*"\s*\}\s*', '', output, flags=_re.DOTALL).strip()
+                    if output:
+                        return output
                 logger.warning(f"sanaa-clade bridge failed, falling back to LiteLLM: {result.stderr}")
             except Exception as e:
                 logger.warning(f"sanaa-clade bridge exception, falling back to LiteLLM: {e}")
@@ -337,13 +414,15 @@ class Brain:
             models = self.registry.get_models_for_tier(tier)
             for model in models:
                 try:
+                    # Ollama on CPU needs more time; cloud APIs are fast
+                    model_timeout = 90 if model.startswith("ollama/") else 30
                     start = time.monotonic()
                     response = await acompletion(
                         model=model,
                         messages=messages,
                         max_tokens=tier_config["max_tokens"],
                         temperature=0.3,
-                        timeout=300,
+                        timeout=model_timeout,
                     )
                     latency = int((time.monotonic() - start) * 1000)
                     content = response.choices[0].message.content
@@ -372,7 +451,7 @@ class Brain:
 
     def _flatten_messages_for_clade(self, messages: list[dict]) -> str:
         """Flatten chat messages into a single prompt for the CLI wrapper."""
-        parts = ["You are the central brain of Sanaa AI. Respond with practical, accurate operational guidance."]
+        parts = ["You are Sanaa AI, an autonomous intelligence assistant. Be concise, helpful, and conversational."]
         for msg in messages:
             role = (msg.get("role") or "user").upper()
             content = msg.get("content", "")
@@ -388,14 +467,34 @@ class Brain:
     def _should_offer_skills(self, prompt: str, channel: str) -> bool:
         if not prompt:
             return False
-        if len(prompt) > 2500:
+        if len(prompt) > 3000:
             return False
         p = prompt.lower()
         indicators = [
+            # System & infra
             "cpu", "ram", "memory", "disk", "storage", "health", "uptime",
             "service", "process", "logs", "error", "warning", "alerts",
             "check", "scan", "monitor", "status", "website", "web test",
             "latency", "response time", "workflow", "run skill", "self heal",
+            "celery", "beat", "worker", "schedule", "task",
+            "database", "postgres", "sql", "query", "config", "settings",
+            # Communication
+            "email", "news", "briefing", "newsletter", "send", "smtp",
+            "whatsapp", "broadcast", "message", "notify", "telegram",
+            "voice", "audio", "transcribe", "whisper", "voice note",
+            # Development & coding
+            "code", "file", "read file", "write file", "patch", "diff",
+            "search code", "git", "commit", "deploy", "fix bug",
+            # Productivity & tasks
+            "create task", "ticket", "project", "add task", "list tasks", "mark done",
+            # Research & web
+            "fetch", "summarize url", "browse", "web fetch", "scrape",
+            "watch site", "site changed", "competitor",
+            # Skills & meta
+            "skill", "create skill", "new skill", "reload skill",
+            "tmux", "background task", "long running",
+            # External monitoring
+            "endpoint", "api status", "telecom", "payment",
         ]
         return any(k in p for k in indicators)
 
@@ -424,25 +523,34 @@ class Brain:
         return None
 
     async def _track_provider_failure(self, provider: str, error: str):
-        """Track consecutive failures per provider and trigger failover if threshold met."""
+        """Track consecutive failures for a cloud provider and alert when degraded.
+
+        Ollama/local failures are intentionally not tracked here — local is the
+        last-resort fallback and has no upstream to switch to.
+
+        IMPORTANT: We do NOT permanently switch the active provider to "local" on
+        failure. The model chain in auto mode already lists Groq first and Ollama
+        last — so every request tries Groq, falls back to Ollama if Groq is down,
+        and automatically recovers when Groq comes back. Locking the registry into
+        "local" mode would prevent Groq from being tried even after it recovers.
+        """
         from core.database import SystemKnowledge, Alert
-        
-        # Don't failover if we're already local
+
+        # Ollama is the last-resort fallback — no action when it fails
         if provider in ("local", "ollama"):
             return
 
         key = f"provider_fail_count.{provider}"
         current = await SystemKnowledge.get_pref(key, default=0)
         new_count = int(current) + 1
-        
-        # Persist new failure count
+
         from sqlalchemy import select
         from core.database import AsyncSessionLocal
         async with AsyncSessionLocal() as session:
             entry = await session.execute(
                 select(SystemKnowledge).where(
                     SystemKnowledge.domain == "preference",
-                    SystemKnowledge.key == key
+                    SystemKnowledge.key == key,
                 )
             )
             obj = entry.scalars().first()
@@ -454,47 +562,29 @@ class Brain:
                     key=key,
                     value=str(new_count),
                     value_type="int",
-                    source="brain_failover"
+                    source="brain_failover",
                 )
                 session.add(obj)
             await session.commit()
 
-        # Threshold check (e.g. 5 failures)
+        # Alert at threshold — but do NOT change the active provider.
+        # The per-request chain already falls back to Ollama automatically.
         if new_count >= 5:
-            await self._trigger_provider_failover(provider, error)
-
-    async def _trigger_provider_failover(self, provider: str, last_error: str):
-        """Automatically switch system to local Ollama and alert."""
-        from core.database import SystemKnowledge, Alert
-        
-        active_provider = await SystemKnowledge.get_pref("brain.provider", default="auto")
-        
-        if active_provider == "local":
-            return # Already failed over
-
-        # Switch across the whole system
-        from sqlalchemy import update
-        from core.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                update(SystemKnowledge)
-                .where(SystemKnowledge.key == "brain.provider")
-                .values(value="local")
+            await Alert.create(
+                severity="high",
+                message=(
+                    f"Brain: {provider} has failed {new_count} consecutive times. "
+                    f"Requests are falling back to Ollama. Last error: {error[:200]}"
+                ),
+                metric=f"brain.provider.degraded.{provider}",
             )
-            await session.commit()
-            
-        self.registry.set_active_provider("local")
-        
-        # Log critical alert
-        await Alert.create(
-            severity="critical",
-            message=f"AI Provider Failover: {provider} is chronically failing. System switched to LOCAL (Ollama) automatically.",
-            metric=f"brain.failover.{provider}",
-        )
-        logger.critical(f"Brain: Triggered automatic failover from {provider} to local due to: {last_error}")
+            logger.warning(
+                f"Brain: {provider} is degraded ({new_count} failures). "
+                f"Auto-fallback to Ollama active. Groq will be retried on every request."
+            )
 
     async def _reset_provider_failure(self, provider: str):
-        """Reset failure counter upon successful call."""
+        """Reset failure counter after a successful call to this provider."""
         from core.database import SystemKnowledge
         key = f"provider_fail_count.{provider}"
         current = await SystemKnowledge.get_pref(key, default=0)
@@ -508,9 +598,13 @@ class Brain:
                     .values(value="0")
                 )
                 await session.commit()
+            logger.info(f"Brain: {provider} recovered — failure counter reset")
 
     def _determine_tier(self, prompt: str, complexity: str) -> int:
-        """Determine which tier to use based on complexity hint or heuristics."""
+        """Determine which tier to use based on complexity hint or heuristics.
+        Tier 1 (Local): Status checks, emails, backups, formatting.
+        Tier 3 (Groq/Claude): Complex reasoning, coding, deep analysis.
+        """
         if complexity == "low":
             return 1
         if complexity == "medium":
@@ -524,18 +618,21 @@ class Brain:
         complex_keywords = [
             "analyze", "plan", "review", "audit", "debug", "explain why",
             "architecture", "strategy", "migration", "refactor", "security",
-            "write code", "fix", "deploy",
+            "write code", "fix", "deploy", "investigate anomaly"
         ]
+        
+        # Expanded simple keywords for personal assistant tasks (Jarvis mode)
         simple_keywords = [
             "status", "check", "restart", "list", "show", "what is",
-            "how many", "uptime", "health",
+            "how many", "uptime", "health", "read email", "inbox",
+            "backup", "summary", "translate", "format", "brief"
         ]
 
         token_estimate = len(prompt.split()) * 1.3
 
         if any(kw in prompt_lower for kw in complex_keywords) or token_estimate > 500:
             return 3
-        elif any(kw in prompt_lower for kw in simple_keywords) and token_estimate < 100:
+        elif any(kw in prompt_lower for kw in simple_keywords) and token_estimate < 150:
             return 1
         else:
             return 2
@@ -590,7 +687,14 @@ Respond ONLY in JSON with:
             }
 
     async def execute_plan(self, cmd_id: str, plan: list[str]):
-        """Execute an approved plan step by step."""
+        """Execute an approved plan step by step.
+
+        Security: Uses subprocess with shell=False and argument lists to
+        prevent shell injection. Commands are parsed via shlex.split() and
+        validated for dangerous metacharacters before execution.
+        """
+        from core.utils.sanitize import sanitize_command_string
+
         results = []
 
         for step in plan:
@@ -608,8 +712,21 @@ Respond ONLY in JSON with:
                     results.append({"step": step, "status": "skipped", "reason": actual_cmd})
                     continue
 
-                proc = await asyncio.create_subprocess_shell(
-                    actual_cmd,
+                # Sanitize and split command into argument list (shell=False)
+                try:
+                    cmd_args = sanitize_command_string(actual_cmd)
+                except ValueError as e:
+                    results.append({
+                        "step": step,
+                        "command": actual_cmd,
+                        "status": "blocked",
+                        "error": f"Command blocked by sanitizer: {e}",
+                    })
+                    logger.warning(f"Brain: blocked unsafe command: {actual_cmd!r}")
+                    continue
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd_args,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
