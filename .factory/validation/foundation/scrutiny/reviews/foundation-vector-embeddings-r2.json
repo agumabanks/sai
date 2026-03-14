@@ -1,0 +1,56 @@
+{
+  "featureId": "foundation-vector-embeddings",
+  "reviewedAt": "2026-03-14T08:30:00.000Z",
+  "commitId": "6c9de0d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Commit 6c9de0d correctly implements the full vector embedding pipeline as specified. Three files were changed: backend/core/memory/embeddings.py (126 lines changed — rewrote OllamaEmbeddings to use direct HTTP API, added provider priority logic with _ollama_has_embedding_model() and _openai_key_works() helpers, fixed NullEmbeddings to log warning only once), backend/core/memory/manager.py (10 lines — fixed SQL from ::vector cast to CAST(:param AS vector) for asyncpg compatibility), and backend/tests/test_embeddings.py (632 lines — 32 comprehensive tests). All 5 expectedBehavior items are satisfied: (1) Ollama nomic-embed-text model is available and detected by the provider factory, (2) storing a memory produces a valid 1536-dim embedding vector verified in DB, (3) cosine similarity search returns stored memories with similarity > 0.7 for similar text, (4) NullEmbeddings logs warning once and degrades gracefully without crashing, (5) end-to-end store+retrieve roundtrip works. All 32 tests pass. No blocking issues found.",
+    "issues": [
+      {
+        "file": "backend/core/memory/embeddings.py",
+        "line": 77,
+        "severity": "non_blocking",
+        "description": "OllamaEmbeddings.encode_batch() falls back to sequential encoding because Ollama doesn't support batch. This is documented and correct, but could be a performance concern for bulk memory ingestion. Not a bug — just a known limitation."
+      },
+      {
+        "file": "backend/core/memory/embeddings.py",
+        "line": 90,
+        "severity": "non_blocking",
+        "description": "_normalize_dim() pads short vectors (768-dim nomic-embed-text → 1536-dim) with zeros. This works for pgvector column compatibility but may slightly reduce cosine similarity accuracy compared to native-dim vectors. The tests confirm similarity > 0.7 still holds, so this is acceptable."
+      },
+      {
+        "file": "backend/core/memory/embeddings.py",
+        "line": 121,
+        "severity": "non_blocking",
+        "description": "_openai_key_works() makes a real API call to OpenAI at startup to validate the key. This is a sync blocking call during async app startup. Since it has a 10s timeout and only runs once, impact is minimal, but could be made async for cleanliness."
+      },
+      {
+        "file": "backend/core/memory/manager.py",
+        "line": 148,
+        "severity": "non_blocking",
+        "description": "Duplicate detection in store() uses a relevance_score threshold of 0.03 from RRF merge scores, not raw cosine similarity. This is semantically different from a 'similarity' threshold and could produce false positives on small memory sets. Tests verify this works for the duplicate detection case."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The handoff file for worker session 40b2a960-3179-4880-8f6b-89a66c6e2efb contains metadata for the encryption feature (commit 635d1a3), not the embeddings feature (commit 6c9de0d). The features.json lists this session as completedWorkerSessionId for foundation-vector-embeddings, and the transcript skeleton also describes the encryption work. This is a metadata misattribution — the actual embeddings work was done in a different session context but committed as 6c9de0d. Round 1 reviewer correctly identified this confusion but incorrectly failed the feature based on the wrong commit. The code in 6c9de0d is correct.",
+      "evidence": "Handoff salientSummary says 'Implemented Fernet symmetric encryption for API keys' and commitId is 635d1a3. But the feature's actual implementation is in commit 6c9de0d which modifies embeddings.py, manager.py, and test_embeddings.py. features.json completedWorkerSessionId points to 40b2a960 which maps to the encryption handoff."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md now documents 'Git Commit Hygiene' conventions including selective staging. This was likely added after the round 1 review flagged accumulated unstaged changes. The embedding commit 6c9de0d is clean — it only includes the 3 embedding-related files.",
+      "evidence": "git show 6c9de0d --stat shows only: backend/core/memory/embeddings.py, backend/core/memory/manager.py, backend/tests/test_embeddings.py — exactly the files relevant to this feature."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill procedure was followed for the actual embedding implementation: tests were written (632 lines, 32 cases), the implementation covers all expectedBehavior items, and verification steps were met. The skill procedure is adequate for this type of work.",
+      "evidence": "Test file covers 6 test classes: provider selection (4 tests), Ollama detection (2), OllamaEmbeddings encoding (8), NullEmbeddings fallback (5), memory store with embedding (3), similarity search (6), end-to-end (4). All pass."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/foundation/scrutiny/reviews/foundation-vector-embeddings.json",
+  "summary": "PASS — Re-review of foundation-vector-embeddings. The round 1 failure was due to a metadata misattribution: the reviewer examined the wrong commit (635d1a3/encryption) instead of the correct commit (6c9de0d/embeddings). This re-review examined commit 6c9de0d directly and confirms: (1) OllamaEmbeddings rewrote to use direct HTTP API with nomic-embed-text model, (2) get_embedding_provider() correctly prioritizes Ollama → OpenAI → NullEmbeddings, (3) SQL fixed from ::vector to CAST(:param AS vector) for asyncpg, (4) NullEmbeddings logs warning only once and degrades gracefully, (5) 32 comprehensive tests all pass covering provider selection, encoding, similarity search, FTS fallback, store/retrieve roundtrip, RRF merge, and duplicate detection. The vector embedding pipeline is fully functional. No blocking issues."
+}

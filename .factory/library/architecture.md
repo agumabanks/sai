@@ -6,7 +6,8 @@ Architectural decisions, patterns, and conventions discovered during the mission
 
 ## Backend Architecture
 - **Pattern:** Monolithic FastAPI with Celery async task queue
-- **Entry point:** `backend/core/main.py` (currently 2200+ lines, being refactored into APIRouter modules)
+- **Entry point:** `backend/core/main.py` (305 lines — app setup, lifespan, middleware). Routes split into 13 APIRouter modules in `backend/core/routes/` (auth, commands, skills, status, channels, intelligence, devices, alerts, sessions, config, workflows, misc, webhooks)
+- **Route shared state:** `backend/core/routes/deps.py` — `init_shared_state()` wires all singletons (brain, skill_registry, etc.) during app lifespan startup
 - **Brain engine:** `backend/core/brain/engine.py` — 3-tier LLM failover (fast/balanced/powerful) via LiteLLM
 - **Provider chain:** Groq -> Anthropic -> OpenRouter -> Ollama (only Groq key configured)
 - **Skills:** `backend/skills/{name}/manifest.yaml` + `handler.py` pattern, loaded by `core/skills/loader.py`
