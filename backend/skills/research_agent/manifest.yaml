@@ -1,0 +1,47 @@
+name: research_agent
+version: "2.0.0"
+description: >
+  Multi-step web research agent. Formulates diverse search queries from a
+  topic, fetches DuckDuckGo results, follows top links to extract content
+  (httpx + beautifulsoup4), synthesizes findings via LLM into a structured
+  report (key findings, sources, confidence, knowledge gaps), and stores
+  results in memory for future reference.
+permissions: [network]
+requires_approval: false
+timeout: 300
+tags: [research, ai, search, intelligence, analysis, web-scraping]
+category: research
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: research (full multi-step research flow),
+      quick_search (simple DuckDuckGo search without deep extraction),
+      extract_url (fetch and extract content from a specific URL).
+    required: false
+    default: research
+    enum: [research, quick_search, extract_url]
+  - name: topic
+    type: string
+    description: "The topic or question to research comprehensively."
+    required: true
+  - name: max_results
+    type: integer
+    description: "Number of search results to fetch per query. Maximum 5, default 3."
+    required: false
+    default: 3
+  - name: num_queries
+    type: integer
+    description: "Number of search queries to formulate from the topic. Maximum 5, default 3."
+    required: false
+    default: 3
+  - name: max_pages
+    type: integer
+    description: "Maximum number of pages to fetch and extract content from. Maximum 8, default 5."
+    required: false
+    default: 5
+  - name: url
+    type: string
+    description: "URL to extract content from (required for extract_url action)."
+    required: false
