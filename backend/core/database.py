@@ -931,6 +931,58 @@ class Tenant(Base, ActiveRecordMixin):
     )
 
 
+# ==================== ALERT RULES ====================
+
+class AlertRule(Base, ActiveRecordMixin):
+    """Configurable alert rules with routing, escalation, and quiet hours.
+
+    Each rule defines: what to watch (condition/threshold), who to notify
+    (recipients), how to escalate (escalation_policy), and when to suppress
+    (quiet_hours).
+    """
+    __tablename__ = "alert_rules"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    condition = Column(String(500), nullable=False)      # metric name or expression
+    threshold = Column(Float, nullable=False)             # trigger when value > threshold
+    severity = Column(String(20), nullable=False)         # low, medium, high, critical
+    recipients = Column(JSON, nullable=False)             # list of email addresses
+    escalation_policy = Column(JSON, nullable=True)       # {"levels": [{"channel": "email", "timeout_minutes": 0}, ...]}
+    quiet_hours = Column(JSON, nullable=True)             # {"start": "22:00", "end": "07:00", "timezone": "Africa/Kampala"}
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_alert_rules_condition", "condition"),
+        Index("idx_alert_rules_severity", "severity"),
+        Index("idx_alert_rules_enabled", "enabled"),
+    )
+
+
+class AlertEscalation(Base, ActiveRecordMixin):
+    """Tracks active escalation state for triggered alerts.
+
+    Records the current escalation level and timestamps so the
+    EscalationEngine knows when to advance to the next tier.
+    """
+    __tablename__ = "alert_escalations"
+    id = Column(Integer, primary_key=True, index=True)
+    alert_rule_id = Column(Integer, nullable=False, index=True)
+    message = Column(Text, nullable=False)
+    recipients = Column(JSON, nullable=False)
+    policy = Column(JSON, nullable=False)
+    current_level = Column(Integer, default=0, nullable=False)
+    acknowledged = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    last_escalated_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_alert_escalations_rule", "alert_rule_id"),
+        Index("idx_alert_escalations_ack", "acknowledged"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():
