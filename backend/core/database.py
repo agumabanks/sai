@@ -92,6 +92,7 @@ class Command(Base, ActiveRecordMixin):
     text = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
     status = Column(String(20), default="pending")
+    response = Column(Text, nullable=True)
     proposed_plan = Column(JSON, nullable=True)
     results = Column(JSON, nullable=True)
     thinking = Column(Text, nullable=True)
@@ -135,6 +136,35 @@ class Alert(Base, ActiveRecordMixin):
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
+    @classmethod
+    async def create(cls, **kwargs):
+        # Call the mixin's create
+        instance = await super().create(**kwargs)
+        
+        # Trigger instant notification
+        severity = kwargs.get("severity", "info").lower()
+        if severity in ("high", "critical"):
+            try:
+                import asyncio
+                from core.agents.report_agent import ReportAgent
+                reporter = ReportAgent()
+                subject = f"[Sanaa AI] {severity.upper()} ALERT: {kwargs.get('title', kwargs.get('source', 'System'))}"
+                body = f"Severity: {severity.upper()}\nSource: {kwargs.get('source', 'N/A')}\nMetric: {kwargs.get('metric', 'N/A')}\n\n{kwargs.get('message', '')}"
+                
+                # Check for active event loop before creating task
+                try:
+                    asyncio.get_running_loop()
+                    asyncio.create_task(reporter.send_alert_email(subject, body))
+                except RuntimeError:
+                    # In a sync context or no loop, we just wait for the coroutine?
+                    # The `create` method itself is async, so we must be inside a running event loop!
+                    asyncio.create_task(reporter.send_alert_email(subject, body))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to trigger instant alert notification: {e}")
+                
+        return instance
+
 
 # ==================== NEW TABLES ====================
 
@@ -171,7 +201,10 @@ class SystemKnowledge(Base, ActiveRecordMixin):
 
     @classmethod
     async def get_pref(cls, key: str, default=None, domain: str = "preference"):
-        """Fetch a system preference by key with type casting."""
+        """Fetch a system preference by key with type casting.
+
+        Sensitive keys (e.g. brain.api_key.*) are automatically decrypted.
+        """
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(cls).where(cls.domain == domain, cls.key == key)
@@ -182,6 +215,14 @@ class SystemKnowledge(Base, ActiveRecordMixin):
             
             val = pref.value
             vt = (pref.value_type or "string").lower()
+
+            # Transparently decrypt sensitive values
+            try:
+                from core.utils.crypto import is_sensitive_key, maybe_decrypt
+                if is_sensitive_key(key):
+                    val = maybe_decrypt(val)
+            except Exception:
+                pass  # Graceful degradation — return raw value if crypto fails
             
             if vt == "bool":
                 return val.lower() == "true"
@@ -205,13 +246,25 @@ class SystemKnowledge(Base, ActiveRecordMixin):
         value_type: str = "string",
         source: str = "system",
     ):
-        """Generic upsert helper for system_knowledge rows."""
+        """Generic upsert helper for system_knowledge rows.
+
+        Sensitive keys are automatically encrypted before storage.
+        """
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(cls).where(cls.domain == domain, cls.key == key)
             )
             row = result.scalars().first()
             stored = "" if value is None else str(value)
+
+            # Transparently encrypt sensitive values before storing
+            try:
+                from core.utils.crypto import is_sensitive_key, encrypt_value, is_encrypted
+                if is_sensitive_key(key) and stored and not is_encrypted(stored):
+                    stored = encrypt_value(stored)
+            except Exception:
+                pass  # Graceful degradation
+
             if row:
                 row.value = stored
                 row.value_type = value_type
@@ -237,7 +290,10 @@ class SystemKnowledge(Base, ActiveRecordMixin):
 
     @classmethod
     async def set_pref(cls, key: str, value, source: str = "system", domain: str = "preference"):
-        """Create or update a system preference."""
+        """Create or update a system preference.
+
+        Sensitive keys (e.g. brain.api_key.*) are automatically encrypted before storage.
+        """
         if isinstance(value, bool):
             value_type = "bool"
             stored_value = "true" if value else "false"
@@ -253,6 +309,14 @@ class SystemKnowledge(Base, ActiveRecordMixin):
         else:
             value_type = "string"
             stored_value = "" if value is None else str(value)
+
+        # Transparently encrypt sensitive values before storing
+        try:
+            from core.utils.crypto import is_sensitive_key, encrypt_value, is_encrypted
+            if is_sensitive_key(key) and stored_value and not is_encrypted(stored_value):
+                stored_value = encrypt_value(stored_value)
+        except Exception:
+            pass  # Graceful degradation — store plaintext if crypto fails
 
         async with AsyncSessionLocal() as session:
             result = await session.execute(
@@ -401,6 +465,15 @@ class LLMUsage(Base):
         Index("idx_llm_usage_date", "timestamp"),
     )
 
+    @classmethod
+    async def get_since(cls, since_dt):
+        """Get LLM usage records since a given datetime."""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.timestamp >= since_dt).order_by(cls.timestamp.desc())
+            )
+            return result.scalars().all()
+
 
 # ==================== INTELLIGENCE BRIEFINGS ====================
 
@@ -481,6 +554,163 @@ class SellerAccount(Base, ActiveRecordMixin):
                 select(cls).where(cls.api_key == api_key)
             )
             return result.scalars().first()
+
+
+class PendingApproval(Base, ActiveRecordMixin):
+    """Token-based approval queue for destructive operations."""
+    __tablename__ = "pending_approvals"
+    id = Column(Integer, primary_key=True, index=True)
+    action = Column(String(255), nullable=False)
+    target = Column(String(255), nullable=False)
+    details = Column(JSON, nullable=True)
+    requested_at = Column(DateTime(timezone=True), default=utcnow)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    approved_via = Column(String(50), nullable=True)  # whatsapp, email, dashboard
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_pending_approvals_token", "token"),
+    )
+
+
+# ==================== ML SELF-LEARNING TABLES ====================
+
+class SkillMetrics(Base, ActiveRecordMixin):
+    """Per-skill performance metrics aggregated from skill_runs for ML analysis."""
+    __tablename__ = "skill_metrics"
+    id = Column(Integer, primary_key=True, index=True)
+    skill_name = Column(String(100), nullable=False, index=True)
+    period = Column(String(20), nullable=False)  # hourly, daily, weekly
+    period_start = Column(DateTime(timezone=True), nullable=False)
+    total_runs = Column(Integer, default=0)
+    success_count = Column(Integer, default=0)
+    failure_count = Column(Integer, default=0)
+    timeout_count = Column(Integer, default=0)
+    avg_duration_ms = Column(Float, default=0)
+    p95_duration_ms = Column(Float, default=0)
+    success_rate = Column(Float, default=0)
+    avg_user_rating = Column(Float, nullable=True)
+    rating_count = Column(Integer, default=0)
+    error_categories = Column(JSON, nullable=True)
+    performance_score = Column(Float, default=0.5)  # 0-1 composite ML score
+    trend = Column(String(20), default="stable")  # improving, degrading, stable
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_skill_metrics_name_period", "skill_name", "period", "period_start"),
+        Index("idx_skill_metrics_score", "performance_score"),
+    )
+
+    @classmethod
+    async def get_latest(cls, skill_name: str, period: str = "daily"):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls)
+                .where(cls.skill_name == skill_name, cls.period == period)
+                .order_by(desc(cls.period_start))
+                .limit(1)
+            )
+            return result.scalars().first()
+
+    @classmethod
+    async def get_history(cls, skill_name: str, period: str = "daily", limit: int = 30):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls)
+                .where(cls.skill_name == skill_name, cls.period == period)
+                .order_by(desc(cls.period_start))
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+
+    @classmethod
+    async def get_all_latest(cls, period: str = "daily"):
+        """Get the most recent metrics for all skills."""
+        async with AsyncSessionLocal() as session:
+            subq = (
+                select(cls.skill_name, func.max(cls.period_start).label("max_start"))
+                .where(cls.period == period)
+                .group_by(cls.skill_name)
+                .subquery()
+            )
+            result = await session.execute(
+                select(cls).join(
+                    subq,
+                    (cls.skill_name == subq.c.skill_name)
+                    & (cls.period_start == subq.c.max_start)
+                    & (cls.period == period)
+                )
+            )
+            return list(result.scalars().all())
+
+
+class SkillFeedback(Base, ActiveRecordMixin):
+    """User feedback on skill execution results for supervised learning."""
+    __tablename__ = "skill_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    skill_run_id = Column(Integer, nullable=True)
+    skill_name = Column(String(100), nullable=False, index=True)
+    rating = Column(Integer, nullable=False)  # 1-5 stars or -1/0/1 (thumbs)
+    feedback_type = Column(String(20), default="thumbs")  # thumbs, stars, text
+    comment = Column(Text, nullable=True)
+    session_id = Column(String(64), nullable=True)
+    input_args = Column(JSON, nullable=True)
+    output_snapshot = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_skill_feedback_name", "skill_name", "created_at"),
+    )
+
+
+class SkillLearningLog(Base, ActiveRecordMixin):
+    """Tracks ML model training events and what the system has learned about each skill."""
+    __tablename__ = "skill_learning_log"
+    id = Column(Integer, primary_key=True, index=True)
+    skill_name = Column(String(100), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False)  # parameter_tuned, pattern_found, anomaly_detected, improvement_applied, performance_shift
+    description = Column(Text, nullable=False)
+    old_value = Column(JSON, nullable=True)
+    new_value = Column(JSON, nullable=True)
+    confidence = Column(Float, default=0.5)
+    impact = Column(String(20), default="low")  # low, medium, high
+    applied = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_skill_learning_name", "skill_name", "created_at"),
+        Index("idx_skill_learning_type", "event_type"),
+    )
+
+    @classmethod
+    async def get_recent(cls, skill_name: str = None, limit: int = 20):
+        async with AsyncSessionLocal() as session:
+            q = select(cls).order_by(desc(cls.created_at)).limit(limit)
+            if skill_name:
+                q = q.where(cls.skill_name == skill_name)
+            result = await session.execute(q)
+            return list(result.scalars().all())
+
+
+class SkillParameterProfile(Base, ActiveRecordMixin):
+    """Learned optimal parameter configurations per skill based on successful runs."""
+    __tablename__ = "skill_parameter_profiles"
+    id = Column(Integer, primary_key=True, index=True)
+    skill_name = Column(String(100), nullable=False, index=True)
+    parameter_name = Column(String(100), nullable=False)
+    optimal_value = Column(Text, nullable=True)
+    value_distribution = Column(JSON, nullable=True)  # {"value1": count, "value2": count}
+    success_correlation = Column(Float, default=0)  # -1 to 1
+    sample_size = Column(Integer, default=0)
+    last_updated = Column(DateTime(timezone=True), default=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_skill_param_profile", "skill_name", "parameter_name", unique=True),
+    )
 
 
 # ==================== DB INIT ====================

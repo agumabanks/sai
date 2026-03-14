@@ -24,7 +24,7 @@ from sqlalchemy import select
 import httpx
 
 from core.config import get_settings
-from core.database import init_db, get_db, Log, Command, DeviceReport, Alert, IntelligenceBriefing, StrategicSignal, SellerAccount, AuditLog
+from core.database import init_db, get_db, Log, Command, DeviceReport, Alert, IntelligenceBriefing, StrategicSignal, SellerAccount, AuditLog, utcnow
 from core.integrations.whatsapp_saas_manager import WhatsAppSaaSManager
 
 from core.agents.server_health import ServerHealthAgent
@@ -156,8 +156,51 @@ def _apply_runtime_brain_model(key: str, value: str):
         settings.openrouter_model = model_value
 
 
+async def _migrate_plaintext_api_keys():
+    """One-time migration: encrypt any plaintext API keys in system_knowledge.
+
+    Reads all brain.api_key.* entries and re-encrypts any that are still
+    stored as plaintext (i.e. not prefixed with enc:v1:).  Idempotent —
+    already-encrypted values are left untouched.
+    """
+    from core.database import SystemKnowledge, AsyncSessionLocal
+    from sqlalchemy import select
+
+    try:
+        from core.utils.crypto import is_encrypted, encrypt_value, is_sensitive_key
+    except Exception as e:
+        logger.warning(f"Crypto module unavailable, skipping API key migration: {e}")
+        return
+
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(SystemKnowledge).where(
+                    SystemKnowledge.key.like("brain.api_key.%"),
+                    SystemKnowledge.domain == "preference",
+                )
+            )
+            rows = result.scalars().all()
+            migrated = 0
+            for row in rows:
+                if row.value and not is_encrypted(row.value):
+                    row.value = encrypt_value(row.value)
+                    row.updated_at = utcnow()
+                    migrated += 1
+            if migrated:
+                await session.commit()
+                logger.info(f"Migrated {migrated} plaintext API key(s) to encrypted storage")
+            else:
+                logger.debug("No plaintext API keys to migrate")
+    except Exception as e:
+        logger.error(f"Failed to migrate plaintext API keys: {e}")
+
+
 async def _load_persisted_brain_config():
-    """Apply persisted brain settings from DB to runtime settings/brain on startup."""
+    """Apply persisted brain settings from DB to runtime settings/brain on startup.
+
+    API key values are automatically decrypted by SystemKnowledge.get_pref().
+    """
     from core.database import SystemKnowledge
 
     secret_pref_map = {
@@ -251,6 +294,7 @@ async def lifespan(app: FastAPI):
             settings.admin_password_hash = hashed
             logger.info("Admin password auto-migrated to bcrypt hash")
 
+    await _migrate_plaintext_api_keys()
     await _load_persisted_brain_config()
     await web_channel.connect()
 
