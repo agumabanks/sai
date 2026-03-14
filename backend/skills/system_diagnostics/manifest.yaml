@@ -1,0 +1,18 @@
+name: system_diagnostics
+version: "1.0.0"
+description: Deep system introspection (DB queries, LLM provider health, alerts, config).
+permissions: [database, network]
+requires_approval: false
+timeout: 30
+tags: [debug, diagnostics, database, llm]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: Action to perform (db_query, provider_status, alert_history, config_check)
+    required: true
+    enum: [db_query, provider_status, alert_history, config_check]
+  - name: query
+    type: string
+    description: SELECT query to run (required for db_query)
+    required: false

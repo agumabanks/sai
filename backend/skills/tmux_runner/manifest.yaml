@@ -1,0 +1,36 @@
+name: tmux_runner
+description: "Spawn, monitor, rename, and kill long-running background terminal tasks without blocking the AI. Includes async 'wait' polling — ask Sanaa AI to start a task and check back when done."
+version: "2.0.0"
+category: "system"
+permissions: [shell]
+tags: ["tmux", "background", "long-running", "terminal", "async", "wait", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: start, check, list, kill, rename, wait"
+    required: true
+    enum: ["start", "check", "list", "kill", "rename", "wait"]
+  session_name:
+    type: string
+    description: "Tmux session name (default: 'sanaa-bg')"
+    required: false
+  command:
+    type: string
+    description: "Shell command to run in background (for 'start' action)"
+    required: false
+  new_name:
+    type: string
+    description: "New session name (for 'rename' action)"
+    required: false
+  lines:
+    type: integer
+    description: "Number of lines to capture from session output (for 'check', default 50)"
+    required: false
+  timeout:
+    type: integer
+    description: "Max seconds to wait for session to finish (for 'wait', default 300)"
+    required: false
+  poll_interval:
+    type: integer
+    description: "Seconds between status polls (for 'wait', default 5)"
+    required: false

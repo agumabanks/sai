@@ -1,0 +1,27 @@
+name: test_dummy
+version: "1.0.0"
+description: "Test skill for validating the skill execution pipeline"
+category: system
+enabled: true
+requires_approval: false
+parameters:
+  - name: action
+    type: string
+    required: false
+    default: echo
+    description: "Action to perform: echo or fail"
+  - name: message
+    type: string
+    required: false
+    default: "Test dummy skill executed successfully"
+    description: "Message to echo back"
+test_cases:
+  - name: "Basic echo test"
+    args:
+      action: echo
+      message: "hello world"
+    expect_success: true
+  - name: "Intentional failure test"
+    args:
+      action: fail
+    expect_success: false

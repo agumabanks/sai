@@ -37,6 +37,8 @@ class _ManifestWrappedSkill(BaseSkill):
         self.requires_approval = manifest.requires_approval
         self.timeout = manifest.timeout
         self.tags = manifest.tags
+        self.dependencies = manifest.dependencies
+        self.test_cases = manifest.test_cases
         self.parameters = manifest.parameters
         self._execute_fn = execute_fn
 
@@ -56,6 +58,25 @@ class SkillLoader:
         self.scanner = scanner or SkillScanner()
         self._loaded: dict[str, BaseSkill] = {}
 
+    def _check_gating(self, manifest: dict) -> tuple[bool, str]:
+        """Check if skill requirements are met (env vars, binaries)."""
+        requires = manifest.get("requires", {})
+        if not requires:
+            return True, ""
+
+        # Check required environment variables
+        for env_var in requires.get("env", []):
+            if not os.getenv(env_var):
+                return False, f"Missing environment variable: {env_var}"
+
+        # Check required binaries
+        import shutil
+        for binary in requires.get("bins", []):
+            if not shutil.which(binary):
+                return False, f"Missing binary: {binary}"
+
+        return True, ""
+
     async def discover(self) -> list[SkillManifest]:
         """Scan skills directory for manifest.yaml files.
 
@@ -68,11 +89,12 @@ class SkillLoader:
         """Load a single skill from its manifest.
 
         Steps:
-          1. Verify handler.py exists
-          2. Run security scan on handler source
-          3. Dynamically import the module
-          4. Extract BaseSkill subclass or execute() function
-          5. Return instantiated skill
+          1. Check gating requirements (env vars, binaries)
+          2. Verify handler.py exists
+          3. Run security scan on handler source
+          4. Dynamically import the module
+          5. Extract BaseSkill subclass or execute() function
+          6. Return instantiated skill
 
         Args:
             manifest: Parsed SkillManifest.
@@ -80,6 +102,22 @@ class SkillLoader:
         Returns:
             Loaded BaseSkill instance, or None if loading failed.
         """
+        # Gating check: read raw manifest to check requires field
+        import yaml
+        manifest_yaml_path = os.path.join(manifest.path, "manifest.yaml")
+        if os.path.exists(manifest_yaml_path):
+            try:
+                with open(manifest_yaml_path, "r") as f:
+                    raw_manifest = yaml.safe_load(f) or {}
+                gate_ok, gate_reason = self._check_gating(raw_manifest)
+                if not gate_ok:
+                    logger.warning(
+                        f"Skill '{manifest.name}' skipped — gating failed: {gate_reason}"
+                    )
+                    return None
+            except Exception as e:
+                logger.warning(f"Skill '{manifest.name}' gating check error: {e}")
+
         handler_path = manifest.handler_path
 
         # Check handler exists
@@ -87,8 +125,10 @@ class SkillLoader:
             logger.error(f"Handler not found for skill '{manifest.name}': {handler_path}")
             return None
 
-        # Security scan
-        scan_result = self.scanner.scan_file(handler_path)
+        # Security scan — pass manifest permissions so that skills
+        # declaring e.g. 'shell' permission are not rejected for
+        # using subprocess with safe argument lists.
+        scan_result = self.scanner.scan_file(handler_path, permissions=manifest.permissions)
         if not scan_result.passed:
             critical = [f for f in scan_result.findings if f.severity == "critical"]
             logger.error(
@@ -152,6 +192,10 @@ class SkillLoader:
                         instance.description = manifest.description
                     if not instance.parameters:
                         instance.parameters = manifest.parameters
+                    if not getattr(instance, "dependencies", None):
+                        instance.dependencies = manifest.dependencies
+                    if not getattr(instance, "test_cases", None):
+                        instance.test_cases = manifest.test_cases
                     return instance
                 except Exception as e:
                     logger.error(f"Failed to instantiate {attr_name}: {e}")
@@ -181,6 +225,18 @@ class SkillLoader:
             skill = await self.load(manifest)
             if skill:
                 loaded[skill.name] = skill
+
+        # Verify dependencies
+        to_remove = []
+        for name, skill in loaded.items():
+            for dep in getattr(skill, "dependencies", []):
+                if dep not in loaded:
+                    logger.error(f"Skill '{name}' failed dependency check: missing '{dep}'")
+                    to_remove.append(name)
+                    break
+                    
+        for name in to_remove:
+            loaded.pop(name, None)
 
         logger.info(
             f"Skill loading complete: {len(loaded)}/{len(manifests)} skills loaded"

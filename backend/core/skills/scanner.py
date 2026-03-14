@@ -62,7 +62,8 @@ SECURITY_RULES = [
         "id": "dynamic-code",
         "severity": "critical",
         "message": "Dynamic code execution (eval/exec/compile)",
-        "pattern": r"\beval\s*\(|\bexec\s*\(|\bcompile\s*\(",
+        # Only match standalone eval/exec/compile, not re.compile or similar qualified calls
+        "pattern": r"(?<!\w\.)(?<!\w)\beval\s*\(|(?<!\w\.)(?<!\w)\bexec\s*\(|(?<!\w\.)(?<!\w)\bcompile\s*\(",
     },
     {
         "id": "import-os-system",
@@ -115,6 +116,16 @@ PROHIBITED_IMPORTS = {
 }
 
 
+# Maps manifest permission names to scanner rule IDs that they allow.
+# When a skill declares a permission, matching critical findings are
+# downgraded to warnings instead of blocking the skill from loading.
+PERMISSION_ALLOWLIST: dict[str, set[str]] = {
+    "shell": {"dangerous-exec", "import-os-system"},
+    "network": {"network-exfil"},
+    "filesystem": {"file-write"},
+}
+
+
 class SkillScanner:
     """Static analysis scanner for skill source code."""
 
@@ -123,16 +134,29 @@ class SkillScanner:
         if extra_rules:
             self.rules.extend(extra_rules)
 
-    def scan_source(self, source: str, filename: str = "unknown") -> ScanResult:
+    def scan_source(
+        self,
+        source: str,
+        filename: str = "unknown",
+        permissions: list[str] | None = None,
+    ) -> ScanResult:
         """Scan source code for security risks.
 
         Args:
             source: Python source code as a string.
             filename: Name of the file being scanned (for reporting).
+            permissions: Skill's declared permissions from manifest.yaml.
+                         Critical findings for rules covered by a declared
+                         permission are downgraded to warnings.
 
         Returns:
             ScanResult with pass/fail and detailed findings.
         """
+        # Build a set of rule IDs that are allowed by the skill's permissions.
+        allowed_rules: set[str] = set()
+        for perm in (permissions or []):
+            allowed_rules.update(PERMISSION_ALLOWLIST.get(perm, set()))
+
         findings = []
         lines = source.split("\n")
 
@@ -146,10 +170,16 @@ class SkillScanner:
 
                 match = re.search(rule["pattern"], line)
                 if match:
+                    severity = rule["severity"]
+                    # Downgrade critical → warn if the skill declared the
+                    # permission that covers this rule.
+                    if severity == "critical" and rule["id"] in allowed_rules:
+                        severity = "warn"
+
                     findings.append(
                         ScanFinding(
                             rule_id=rule["id"],
-                            severity=rule["severity"],
+                            severity=severity,
                             message=rule["message"],
                             line=i + 1,
                             evidence=stripped[:120],
@@ -185,11 +215,16 @@ class SkillScanner:
             skill_name=filename,
         )
 
-    def scan_file(self, filepath: str) -> ScanResult:
+    def scan_file(
+        self,
+        filepath: str,
+        permissions: list[str] | None = None,
+    ) -> ScanResult:
         """Scan a Python file for security risks.
 
         Args:
             filepath: Path to the Python file.
+            permissions: Skill's declared permissions from manifest.yaml.
 
         Returns:
             ScanResult.
@@ -197,7 +232,7 @@ class SkillScanner:
         try:
             with open(filepath, "r") as f:
                 source = f.read()
-            return self.scan_source(source, filename=filepath)
+            return self.scan_source(source, filename=filepath, permissions=permissions)
         except FileNotFoundError:
             return ScanResult(
                 passed=False,

@@ -1,0 +1,24 @@
+name: github
+description: "Perform Git and GitHub operations on the local codebase, such as checking status, reading recent commits, and pulling updates."
+version: "1.0.0"
+author: "Sanaa AI Core"
+category: "development"
+permissions:
+  - "shell"
+  - "read_code"
+  - "execute_git"
+requires_approval: false
+tags:
+  - "git"
+  - "github"
+  - "code"
+parameters:
+  action:
+    type: "string"
+    description: "The action to perform (e.g., 'status', 'log', 'diff')"
+    required: true
+    enum: ["status", "log", "diff"]
+  limit:
+    type: "integer"
+    description: "Number of commits to show for 'log' action (default 5)"
+    required: false

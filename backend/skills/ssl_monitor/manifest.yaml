@@ -1,0 +1,24 @@
+name: ssl_monitor
+version: "1.0.0"
+description: Checks SSL certificates for expiration dates and triggers renewal approvals if needed.
+permissions: [network]
+requires_approval: false
+timeout: 60
+tags: [monitoring, infrastructure, security, ssl]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action to perform: check_domains, list_expiring"
+    required: true
+    enum: [check_domains, list_expiring]
+  - name: domains
+    type: string
+    description: "Comma-separated list of domains to check (for check_domains)"
+    required: false
+test_cases:
+  - name: "Check specific domains"
+    args:
+      action: "check_domains"
+      domains: "google.com"
+    expect_success: true
