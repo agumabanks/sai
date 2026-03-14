@@ -87,23 +87,23 @@ class MemoryManager:
         if category:
             query = text("""
                 SELECT id, content, category, confidence, source, created_at,
-                       1 - (embedding <=> :embedding::vector) AS similarity
+                       1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
                 FROM agent_memory
                 WHERE embedding IS NOT NULL
                   AND category = :category
                   AND (expires_at IS NULL OR expires_at > NOW())
-                ORDER BY embedding <=> :embedding::vector
+                ORDER BY embedding <=> CAST(:embedding AS vector)
                 LIMIT :limit
             """)
             params = {"embedding": embedding_str, "category": category, "limit": limit}
         else:
             query = text("""
                 SELECT id, content, category, confidence, source, created_at,
-                       1 - (embedding <=> :embedding::vector) AS similarity
+                       1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
                 FROM agent_memory
                 WHERE embedding IS NOT NULL
                   AND (expires_at IS NULL OR expires_at > NOW())
-                ORDER BY embedding <=> :embedding::vector
+                ORDER BY embedding <=> CAST(:embedding AS vector)
                 LIMIT :limit
             """)
             params = {"embedding": embedding_str, "limit": limit}
@@ -257,7 +257,7 @@ class MemoryManager:
                      embedding, created_at, updated_at, access_count)
                 VALUES
                     (:content, :category, :source, :confidence, :expires_at,
-                     :metadata, :embedding::vector, NOW(), NOW(), 0)
+                     :metadata, CAST(:embedding AS vector), NOW(), NOW(), 0)
                 RETURNING id
             """)
             async with AsyncSessionLocal() as session:
