@@ -606,6 +606,25 @@ class SanaaEngineService
         }
     }
 
+    /**
+     * Save a workflow definition from YAML content.
+     * Posts the YAML body to the backend which writes it to the workflows directory.
+     */
+    public function saveWorkflow(string $yaml): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->withBody($yaml, 'application/x-yaml')
+                ->post("{$this->baseUrl}/workflows");
+
+            return $response->json() ?? ['status' => 'saved'];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Workflow Save Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
     public function getSessionPolicy(): array
     {
         try {
@@ -1064,6 +1083,24 @@ class SanaaEngineService
         } catch (\Exception $e) {
             Log::error("Sanaa Engine Audit Logs Error: " . $e->getMessage());
             return ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => $perPage, 'pages' => 0];
+        }
+    }
+
+    // ── API Documentation ─────────────────────────────────────────────────
+
+    /**
+     * Fetch the OpenAPI specification from the backend.
+     */
+    public function getOpenApiSpec(): array
+    {
+        try {
+            // OpenAPI spec is served at the root path, not under /api
+            $rootUrl = str_replace('/api', '', $this->baseUrl);
+            $response = Http::timeout(15)->get("{$rootUrl}/openapi.json");
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine OpenAPI Spec Error: " . $e->getMessage());
+            return [];
         }
     }
 
