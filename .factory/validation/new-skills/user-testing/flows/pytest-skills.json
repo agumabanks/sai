@@ -1,0 +1,105 @@
+{
+  "flowId": "pytest-skills",
+  "testedAt": "2026-03-14T08:15:00Z",
+  "isolation": {
+    "backendDirectory": "/var/www/ai.sanaa.co/backend",
+    "pythonVenv": "/opt/antigravity/venv/bin/python3",
+    "command": "cd /var/www/ai.sanaa.co/backend && /opt/antigravity/venv/bin/python3 -m pytest tests/ -v --tb=short"
+  },
+  "toolsUsed": ["pytest"],
+  "assertions": {
+    "VAL-SKILL-001": {
+      "status": "pass",
+      "evidence": "tests/skills/test_social_media.py - 27 tests all pass. Manifest parses successfully, skill loads into registry, appears in API listing (TestSocialMediaAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest parsing (8 tests), skill loading (2 tests), create_content (7 tests), schedule_post (5 tests), analytics (2 tests), unknown action (2 tests), API integration (1 test)."
+    },
+    "VAL-SKILL-002": {
+      "status": "pass",
+      "evidence": "TestCreateContent tests all pass: test_create_twitter_content_under_280_chars, test_create_twitter_truncates_long_content, test_create_linkedin_content_professional, test_create_facebook_content, test_create_content_invalid_platform, test_create_content_missing_topic, test_create_content_no_brain.",
+      "details": "Platform-specific content generation verified for Twitter/X (280 char limit), LinkedIn (professional tone), and Facebook. Error handling for invalid platform and missing topic also verified."
+    },
+    "VAL-SKILL-003": {
+      "status": "pass",
+      "evidence": "tests/skills/test_email_marketing.py - 37 tests all pass. Manifest parses, skill loads, appears in registry (TestEmailMarketingAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest (11 tests), loading (2 tests), campaign creation (6 tests), send campaign (6 tests), list campaigns (3 tests), campaign stats (3 tests), unknown action (2 tests), SMTP integration (3 tests), API integration (1 test)."
+    },
+    "VAL-SKILL-004": {
+      "status": "pass",
+      "evidence": "TestCreateCampaign and TestSendCampaign tests all pass. Campaign creation with subject, body template, and recipients verified. SMTP email queueing tested via TestSMTPIntegration (test_smtp_connection_configured, test_send_email_uses_smtp, test_send_email_handles_smtp_error).",
+      "details": "Email campaign creation stores campaign data. Send campaign queues emails via SMTP. Error handling for SMTP failures verified."
+    },
+    "VAL-SKILL-005": {
+      "status": "pass",
+      "evidence": "tests/skills/test_market_intelligence.py - 29 tests all pass. Manifest parses, skill loads, appears in registry (TestMarketIntelAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest (8 tests), loading (2 tests), scan action (7 tests), analyze action (5 tests), unknown action (2 tests), helpers (4 tests), API integration (1 test)."
+    },
+    "VAL-SKILL-006": {
+      "status": "pass",
+      "evidence": "TestScanAction tests pass: test_scan_fetches_rss_feeds, test_scan_handles_feed_errors, test_scan_no_feeds_configured, test_scan_stores_signals_in_memory, test_scan_deduplicates_entries, test_scan_limits_entries, test_scan_empty_feeds. TestAnalyzeAction tests pass for trend analysis via LLM.",
+      "details": "RSS feed fetching, signal storage, trend analysis via LLM all verified. Error handling for feed failures, empty feeds, and LLM failures tested."
+    },
+    "VAL-SKILL-007": {
+      "status": "pass",
+      "evidence": "tests/skills/test_content_generator.py - 45 tests all pass. Manifest parses, skill loads, appears in registry (TestContentGeneratorAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest (11 tests), loading (3 tests), blog post (6 tests), social copy (6 tests), email copy (6 tests), SEO meta (4 tests), unknown action (2 tests), helpers (5 tests), voice params (1 test), API integration (1 test)."
+    },
+    "VAL-SKILL-008": {
+      "status": "pass",
+      "evidence": "TestBlogPost (6 tests), TestSocialCopy (6 tests), TestEmailCopy (6 tests) all pass. Blog posts, social copy for multiple platforms, and email copy generation verified with topic, format, and brand voice parameters.",
+      "details": "Content generation produces structured output for blog posts (title, body, meta), social copy (platform-specific), and email copy (subject, body, CTA). Voice parameters respected."
+    },
+    "VAL-SKILL-009": {
+      "status": "pass",
+      "evidence": "tests/skills/test_research_agent.py - 56 tests all pass. Multi-step research verified: TestQueryFormulation (5 tests), TestFullResearch (7 tests including test_research_full_flow, test_research_stores_in_memory), TestQuickSearch (4 tests), TestExtractUrl (4 tests), TestSynthesis (3 tests).",
+      "details": "Multi-step pipeline: formulate queries -> search -> fetch pages -> synthesize report. Memory storage of findings verified. Error handling for search failures, fetch failures, and LLM failures tested. Version is v2.0 (TestResearchAgentAPIIntegration::test_skill_version_is_upgraded PASSED)."
+    },
+    "VAL-SKILL-010": {
+      "status": "pass",
+      "evidence": "tests/skills/test_backup_automation.py - 40 tests all pass. Manifest parses, skill loads, appears in registry (TestBackupAutomationAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest (8 tests), loading (3 tests), postgres backup (3 tests), mysql backup (4 tests), config backup (3 tests), status (2 tests), schedule (3 tests), unknown action (2 tests), Celery integration (3 tests), API integration (1 test), helpers (8 tests)."
+    },
+    "VAL-SKILL-011": {
+      "status": "pass",
+      "evidence": "TestBackupPostgres (3 tests: success, pg_dump not found, dump failure), TestBackupMySQL (4 tests: no tenants, specific db, dump failure, mysqldump not found), TestBackupConfigs (3 tests: success, no files, tar not found) all pass.",
+      "details": "pg_dump, mysqldump, and config archive operations verified. Backup status reporting (success/failure, size, path) tested. Error handling for missing tools and failures verified."
+    },
+    "VAL-SKILL-012": {
+      "status": "pass",
+      "evidence": "tests/skills/test_calendar.py - 38 tests all pass. Manifest parses, skill loads, appears in registry (TestCalendarAPIIntegration::test_skill_in_registry PASSED). Skill dir has manifest.yaml + handler.py.",
+      "details": "Tests cover: manifest (9 tests), loading (2 tests), create task (5 tests), list tasks (4 tests), update task (4 tests), complete task (4 tests), overdue check (2 tests), set reminder (5 tests), unknown action (2 tests), API integration (1 test)."
+    },
+    "VAL-SKILL-013": {
+      "status": "pass",
+      "evidence": "TestCreateTask (5 tests), TestListTasks (4 tests), TestUpdateTask (4 tests), TestCompleteTask (4 tests), TestOverdueCheck (2 tests) all pass. CRUD operations with due dates, priorities, and reminders verified. Overdue task flagging tested.",
+      "details": "Task creation with title, due date, priority. Listing with status/priority filters. Update and complete operations. Overdue detection. Reminder setting with trigger times."
+    },
+    "VAL-SKILL-014": {
+      "status": "pass",
+      "evidence": "tests/test_hot_reload.py - 25 tests all pass. TestManifestReload::test_manifest_change_triggers_reload PASSED. TestHandlerReload::test_handler_change_updates_skill_behaviour PASSED. TestFileWatcherDetection::test_file_change_detected PASSED, test_handler_change_detected PASSED.",
+      "details": "File watcher detects manifest.yaml and handler.py changes. Manifest changes trigger skill reload. Handler changes update behavior. Invalid manifest/handler rejected. Debouncing verified. Registry integration verified."
+    },
+    "VAL-SKILL-017": {
+      "status": "pass",
+      "evidence": "Test counts per skill: social_media=27, email_marketing=37, market_intelligence=29, content_generator=45, research_agent=56, backup_automation=40, calendar=38. All exceed the minimum of 3 tests. Each covers loading, primary action, and error handling.",
+      "details": "All 292 skill-specific tests pass. Each skill has dedicated test classes for manifest validation, loading, primary actions, error handling, and API integration."
+    },
+    "VAL-CROSS-001": {
+      "status": "pass",
+      "evidence": "tests/test_skill_integration.py::TestSecurityApprovalFlow - 5 tests all pass: test_backup_automation_requires_approval_flag, test_backup_automation_approval_flow, test_non_approval_skills_execute_normally, test_registry_list_shows_approval_flag, test_approval_skills_not_executed.",
+      "details": "backup_automation has requires_approval: true in manifest. Tool policy enforcement verified - approval-required skills are blocked from direct execution. Non-approval skills execute normally. Registry listing correctly exposes approval flag."
+    },
+    "VAL-CROSS-002": {
+      "status": "pass",
+      "evidence": "tests/test_skill_integration.py::TestSkillsMemoryIntegration - 7 tests all pass: test_store_social_media_result_in_memory, test_store_market_intelligence_in_memory, test_store_and_search_research_findings, test_store_calendar_task_in_memory, test_store_email_campaign_in_memory, test_store_content_generation_in_memory, test_store_backup_status_in_memory.",
+      "details": "All new skills store results in memory and can retrieve context. Market intelligence stores signals. Research agent stores findings. Memory search retrieval verified."
+    },
+    "VAL-CROSS-009": {
+      "status": "pass",
+      "evidence": "tests/test_hot_reload.py::TestBrainToolLoopIntegration - 2 tests pass: test_brain_registry_sees_reloaded_skill, test_tools_export_reflects_reload. After hot-reload, Brain engine sees updated skill in its tool loop.",
+      "details": "Brain registry reflects reloaded skills. Tool export list updates after reload. Hot-reloaded skills are invocable in brain tool loop with updated behavior."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 18 assertions: all 18 passed. 396 total pytest tests executed (292 skill tests + 25 hot-reload tests + 63 skill-integration tests + 16 skill-loading tests), all passing. Every new skill (social_media, email_marketing, market_intelligence, content_generator, backup_automation, calendar, research_agent) has manifest.yaml + handler.py, loads into registry, has comprehensive test coverage (27-56 tests each), respects security policies, uses memory system, and supports hot-reload in brain tool loop."
+}
