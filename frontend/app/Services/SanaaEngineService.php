@@ -1120,4 +1120,74 @@ class SanaaEngineService
             return [];
         }
     }
+
+    // ── Alert Rule CRUD API ───────────────────────────────────────────────
+
+    /**
+     * List all alert rules.
+     */
+    public function getAlertRules(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(10)
+                ->get("{$this->baseUrl}/alert-rules");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Alert Rules Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Create a new alert rule.
+     */
+    public function createAlertRule(array $data): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->post("{$this->baseUrl}/alert-rules", $data);
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Create Alert Rule Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Update an existing alert rule.
+     */
+    public function updateAlertRule(int $id, array $data): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->put("{$this->baseUrl}/alert-rules/{$id}", $data);
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Update Alert Rule Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Delete an alert rule.
+     */
+    public function deleteAlertRule(int $id): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(10)
+                ->delete("{$this->baseUrl}/alert-rules/{$id}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Delete Alert Rule Error: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
+    }
 }
