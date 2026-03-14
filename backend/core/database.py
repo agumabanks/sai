@@ -800,6 +800,44 @@ class EmailCampaign(Base, ActiveRecordMixin):
     )
 
 
+# ==================== CALENDAR / TASK MANAGEMENT ====================
+
+class TaskCalendar(Base, ActiveRecordMixin):
+    """Calendar task with due date, priority, status, and reminders."""
+    __tablename__ = "tasks_calendar"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    priority = Column(String(20), default="medium", nullable=False)  # low, medium, high, urgent
+    status = Column(String(20), default="pending", nullable=False)  # pending, in_progress, done, cancelled
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_tasks_calendar_status", "status"),
+        Index("idx_tasks_calendar_priority", "priority"),
+        Index("idx_tasks_calendar_due_date", "due_date"),
+    )
+
+
+class TaskReminder(Base, ActiveRecordMixin):
+    """Reminder entry associated with a calendar task."""
+    __tablename__ = "task_reminders"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, nullable=False, index=True)
+    trigger_time = Column(DateTime(timezone=True), nullable=False)
+    message = Column(Text, nullable=True)
+    triggered = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_task_reminders_task", "task_id"),
+        Index("idx_task_reminders_trigger", "trigger_time", "triggered"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():

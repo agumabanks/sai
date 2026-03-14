@@ -1,0 +1,68 @@
+name: calendar
+version: "1.0.0"
+description: >
+  Task management and scheduling skill. Create, list, update, and
+  complete tasks with due dates, priorities, and reminders. Check for
+  overdue tasks and set reminder notifications.
+permissions: []
+requires_approval: false
+timeout: 30
+tags: [calendar, tasks, scheduling, reminders, productivity]
+category: productivity
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: create_task (create a new task), list_tasks
+      (list tasks with optional filters), update_task (modify task fields),
+      complete_task (mark a task as done), overdue_check (find overdue tasks),
+      set_reminder (create a reminder for a task).
+    required: true
+    enum: [create_task, list_tasks, update_task, complete_task, overdue_check, set_reminder]
+  - name: title
+    type: string
+    description: "Task title (required for create_task)."
+    required: false
+  - name: description
+    type: string
+    description: "Task description (optional for create_task, update_task)."
+    required: false
+  - name: due_date
+    type: string
+    description: "ISO 8601 datetime for the task due date (optional for create_task, update_task; used as filter boundary in list_tasks)."
+    required: false
+  - name: priority
+    type: string
+    description: "Task priority level (optional for create_task, update_task; filter for list_tasks)."
+    required: false
+    enum: [low, medium, high, urgent]
+  - name: status
+    type: string
+    description: "Task status filter for list_tasks."
+    required: false
+    enum: [pending, in_progress, done, cancelled]
+  - name: task_id
+    type: integer
+    description: "Task ID for update_task, complete_task, and set_reminder."
+    required: false
+  - name: date_from
+    type: string
+    description: "Start of date range filter (ISO 8601) for list_tasks."
+    required: false
+  - name: date_to
+    type: string
+    description: "End of date range filter (ISO 8601) for list_tasks."
+    required: false
+  - name: trigger_time
+    type: string
+    description: "ISO 8601 datetime when the reminder should fire (required for set_reminder)."
+    required: false
+  - name: reminder_message
+    type: string
+    description: "Optional message for the reminder (set_reminder)."
+    required: false
+  - name: reminders
+    type: array
+    description: "List of ISO 8601 datetime strings for reminders to create with a new task (optional for create_task)."
+    required: false
