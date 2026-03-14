@@ -1,13 +1,14 @@
 """
-Sanaa AI — Intelligence routes: briefings, signals, wisdom, scan.
+Sanaa AI — Intelligence routes: briefings, signals, wisdom, scan, memories, learning logs.
 """
 
 import json
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
 
 from core.database import IntelligenceBriefing, StrategicSignal, SystemKnowledge, AsyncSessionLocal
 from core.routes import deps
@@ -132,3 +133,103 @@ async def trigger_scan(request: Request, background_tasks: BackgroundTasks, user
     if "hx-request" in request.headers:
         return HTMLResponse('<div class="text-2xl font-bold text-blue-400 animate-pulse">Scanning...</div>')
     return {"status": "started", "message": "Intelligence scan initiated"}
+
+
+# ── Memories API ──────────────────────────────────────────────────────
+
+
+@router.get("/api/memories")
+async def get_memories(
+    search: Optional[str] = Query(None, description="Full-text / semantic search query"),
+    category: Optional[str] = Query(None, description="Filter by category (fact, procedure, preference, observation)"),
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_auth),
+):
+    """Return stored memories with optional search and category filter."""
+    from core.memory.manager import MemoryManager
+
+    mgr = MemoryManager()
+
+    if search and search.strip():
+        # Use hybrid RRF search
+        results = await mgr.search(query=search.strip(), limit=limit, category=category)
+        return {
+            "memories": results,
+            "total": len(results),
+            "search": search,
+            "category": category,
+        }
+
+    # No search — list recent memories with optional category filter
+    conditions = ["(expires_at IS NULL OR expires_at > NOW())"]
+    params: dict = {"limit": limit}
+
+    if category:
+        conditions.append("category = :category")
+        params["category"] = category
+
+    where_clause = " AND ".join(conditions)
+
+    sql = text(f"""
+        SELECT id, content, category, confidence, source, verified,
+               created_at, updated_at, access_count, last_accessed_at
+        FROM agent_memory
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT :limit
+    """)
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(sql, params)
+        rows = result.mappings().all()
+
+    memories = [
+        {
+            "id": row["id"],
+            "content": row["content"],
+            "category": row["category"],
+            "confidence": float(row["confidence"]) if row["confidence"] is not None else 0.5,
+            "source": row["source"],
+            "verified": bool(row["verified"]) if row["verified"] is not None else False,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "access_count": row["access_count"] or 0,
+            "last_accessed_at": row["last_accessed_at"].isoformat() if row["last_accessed_at"] else None,
+        }
+        for row in rows
+    ]
+
+    return {
+        "memories": memories,
+        "total": len(memories),
+        "search": None,
+        "category": category,
+    }
+
+
+# ── Learning Logs API ─────────────────────────────────────────────────
+
+
+@router.get("/api/learning-logs")
+async def get_learning_logs(
+    log_type: Optional[str] = Query(None, description="Filter by type: LEARNINGS, ERRORS, FEATURE_REQUESTS"),
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_auth),
+):
+    """Return structured learning log entries with optional type filter."""
+    from core.memory.learning_logs import LearningLogManager
+
+    mgr = LearningLogManager()
+    entries = await mgr.get_entries(log_type=log_type, limit=limit)
+
+    # Separate promoted entries
+    promoted = [e for e in entries if e.get("promoted")]
+    regular = [e for e in entries if not e.get("promoted")]
+
+    return {
+        "entries": entries,
+        "promoted": promoted,
+        "total": len(entries),
+        "promoted_count": len(promoted),
+        "log_type": log_type,
+    }

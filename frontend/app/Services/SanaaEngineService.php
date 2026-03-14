@@ -930,6 +930,47 @@ class SanaaEngineService
         }
     }
 
+    // ── Memory & Learning Logs API ────────────────────────────────────────
+
+    /**
+     * Get stored memories with optional search and category filter.
+     */
+    public function getMemories(?string $search = null, ?string $category = null, int $limit = 50): array
+    {
+        try {
+            $params = ['limit' => $limit];
+            if ($search !== null && $search !== '') {
+                $params['search'] = $search;
+            }
+            if ($category !== null && $category !== '') {
+                $params['category'] = $category;
+            }
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/memories", $params);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Memories Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Get learning log entries with optional type filter.
+     */
+    public function getLearningLogs(?string $type = null, int $limit = 50): array
+    {
+        try {
+            $params = ['limit' => $limit];
+            if ($type !== null && $type !== '') {
+                $params['log_type'] = $type;
+            }
+            $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/learning-logs", $params);
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Learning Logs Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
     // ── Tenant Control API ────────────────────────────────────────────────
 
     /**
@@ -999,6 +1040,47 @@ class SanaaEngineService
         } catch (\Exception $e) {
             Log::error("Sanaa Engine Tenant Check Error: " . $e->getMessage());
             return ['error' => $e->getMessage()];
+        }
+    }
+
+    // ── Audit Log API ─────────────────────────────────────────────────────
+
+    /**
+     * Get paginated audit log entries with optional filters.
+     */
+    public function getAuditLogs(array $filters = [], int $page = 1, int $perPage = 50): array
+    {
+        try {
+            $params = array_merge($filters, [
+                'page' => $page,
+                'per_page' => $perPage,
+            ]);
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/audit-logs", $params);
+
+            return $response->json() ?? ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => $perPage, 'pages' => 0];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Audit Logs Error: " . $e->getMessage());
+            return ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => $perPage, 'pages' => 0];
+        }
+    }
+
+    /**
+     * Get a single audit log entry by ID.
+     */
+    public function getAuditLogEntry(int $id): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(10)
+                ->get("{$this->baseUrl}/audit-logs/{$id}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error("Sanaa Engine Audit Log Entry Error: " . $e->getMessage());
+            return [];
         }
     }
 }
