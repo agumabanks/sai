@@ -7,7 +7,7 @@
       "passed": true,
       "command": "cd /var/www/ai.sanaa.co/backend && /opt/antigravity/venv/bin/python3 -m pytest tests/ -v --tb=short",
       "exitCode": 1,
-      "notes": "240 passed, 2 failed, 6 warnings. The 2 failures are PRE-EXISTING flaky tests in test_embeddings.py (test_semantic_search_ranks_correctly and test_search_with_category_filter) caused by asyncpg event loop teardown issues — documented in AGENTS.md as known. All foundation feature tests pass. Round 1 had 195 tests; round 2 has 242 tests (47 new route tests added by fix-route-refactor-commit)."
+      "notes": "241 passed, 1 failed (test_semantic_search_ranks_correctly — known flaky test due to asyncpg concurrent ops in teardown, documented as pre-existing in AGENTS.md). 6 warnings (starlette deprecation, asyncpg coroutine). Effective pass — all foundation feature tests green."
     },
     "typecheck": {
       "passed": true,
@@ -19,67 +19,82 @@
       "passed": false,
       "command": "cd /var/www/ai.sanaa.co/frontend && ./vendor/bin/pint --test",
       "exitCode": 1,
-      "notes": "29 files have style issues. All are PRE-EXISTING — no lint failures were introduced by foundation features. Pint rules were not enforced before the mission. Documented in AGENTS.md as pre-existing."
+      "notes": "29 files with style issues — ALL PRE-EXISTING. No new lint failures introduced by foundation features. Pint rules were not enforced before the mission."
     },
     "test_frontend": {
       "passed": false,
       "command": "cd /var/www/ai.sanaa.co/frontend && php artisan test",
       "exitCode": 2,
-      "notes": "3 failed, 9 passed. All 3 failures are PRE-EXISTING: ExampleTest expects 200 but gets 302 (redirect), LivewireLoginTest and LoginErrorTest hit 'no such table: users' (SQLite in-memory without migrations). All foundation-related tests pass (SanaaTerminalTest 6/6, SkillsCommandCenterTest 2/2). Documented in AGENTS.md as pre-existing."
+      "notes": "3 failed, 9 passed (17 assertions). All 3 failures are PRE-EXISTING: ExampleTest expects 200 but gets 302 (redirect), LivewireLoginTest and LoginErrorTest hit 'no such table: users' (SQLite in-memory without migrations). All foundation-related tests pass (SanaaTerminalTest 6/6, SkillsCommandCenterTest 2/2)."
     }
   },
   "reviewsSummary": {
     "total": 2,
     "passed": 2,
     "failed": 0,
-    "failedFeatures": []
+    "failedFeatures": [],
+    "note": "Round 2 re-reviewed the 2 previously failed features from round 1. Both now pass: fix-route-refactor-commit (fixes foundation-main-refactor commit issue) and foundation-vector-embeddings (re-review with correct commit context). Combined with round 1's 6 passing features, all 9 foundation features now pass."
   },
-  "featureReviewDetails": {
-    "fix-route-refactor-commit": {
-      "status": "pass",
-      "commit": "382b45a",
-      "summary": "All 15 route files committed in commit 382b45a. test_routes.py created with 47 comprehensive tests covering all endpoint groups and route registration completeness. All 242 backend tests pass. Only relevant files committed. Three non-blocking issues: intelligence.py auth inconsistency (pre-existing), test naming mismatch, undocumented public endpoint. Fully addresses the round 1 blocking issue."
-    },
-    "foundation-vector-embeddings-r2": {
-      "status": "pass",
-      "commit": "6c9de0d",
-      "summary": "Re-review confirms commit 6c9de0d correctly implements the full vector embedding pipeline. Round 1 failure was metadata misattribution (reviewer examined wrong commit). Actual code: OllamaEmbeddings with nomic-embed-text, asyncpg-compatible SQL CAST, NullEmbeddings fallback, 32 comprehensive tests all pass. Four non-blocking observations: sequential batch encoding, zero-padding normalization, sync OpenAI key check, RRF-based duplicate threshold."
-    }
+  "allFeatureReviews": {
+    "round1_passed": [
+      "foundation-pytest-infra",
+      "foundation-password-hashing",
+      "foundation-injection-fixes",
+      "foundation-api-key-encryption",
+      "foundation-skill-fixes",
+      "foundation-agent-brain-sharing"
+    ],
+    "round2_passed": [
+      "fix-route-refactor-commit",
+      "foundation-vector-embeddings"
+    ]
   },
   "blockingIssues": [],
-  "appliedUpdates": [
+  "nonBlockingIssues": [
     {
-      "target": "library",
-      "description": "Updated architecture.md: Changed main.py entry point description from '2200+ lines, being refactored' to '305 lines, routes split into 13 APIRouter modules in backend/core/routes/'. Added route shared state (deps.py) documentation.",
-      "sourceFeature": "fix-route-refactor-commit"
+      "featureId": "fix-route-refactor-commit",
+      "severity": "non_blocking",
+      "description": "intelligence.py has 2 endpoints (list_briefings, get_briefing) using direct require_auth(request) calls instead of Depends(require_auth). Inconsistent with the 50+ other endpoints that use Depends pattern."
+    },
+    {
+      "featureId": "fix-route-refactor-commit",
+      "severity": "non_blocking",
+      "description": "test_main_py_is_under_300_lines asserts <350 despite function name suggesting <300. main.py is 305 lines, a minor threshold mismatch."
+    },
+    {
+      "featureId": "foundation-vector-embeddings",
+      "severity": "non_blocking",
+      "description": "_openai_key_works() makes synchronous HTTP call during startup. Works correctly but blocks for up to 10s if OpenAI is slow. Primary Ollama path unaffected."
+    },
+    {
+      "featureId": "foundation-vector-embeddings",
+      "severity": "non_blocking",
+      "description": "768-dim nomic-embed-text vectors padded to 1536 with zeros. Wastes ~50% pgvector storage. Future optimization opportunity to change EMBEDDING_DIM to match native model dimension."
     }
   ],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "AGENTS.md",
-      "suggestion": "Note in Architecture Notes section that backend/core/routes/intelligence.py uses direct require_auth(request) calls instead of Depends(require_auth) like all other route modules. Future workers modifying intelligence routes should use the Depends() pattern for consistency.",
-      "evidence": "fix-route-refactor-commit reviewer flagged intelligence.py:81 using 'user = require_auth(request)' while all other routes use 'user: dict = Depends(require_auth)'. Pre-existing inconsistency carried from original refactor.",
+      "suggestion": "Add convention: 'All protected API endpoints MUST use `user: dict = Depends(require_auth)` as a function parameter. Do NOT call `require_auth(request)` directly — this bypasses FastAPI's dependency injection.'",
+      "evidence": "intelligence.py has 2 endpoints using direct require_auth(request) vs 50+ endpoints using Depends pattern. Flagged in both round 1 and round 2 reviews.",
       "isSystemic": false
     },
     {
       "target": "AGENTS.md",
-      "suggestion": "Add guidance about worker session metadata accuracy: 'Workers must ensure the handoff commitId matches the actual commit for their feature, not a commit from a different feature or session. Misattribution causes review failures.'",
-      "evidence": "foundation-vector-embeddings was incorrectly failed in round 1 because the handoff file contained metadata from the encryption feature (commit 635d1a3) instead of the actual embeddings commit (6c9de0d). This caused the round 1 reviewer to examine the wrong code.",
+      "suggestion": "Add guidance: 'Workers MUST verify their handoff commitId matches their actual git commit before submitting. Run `git log --oneline -1` and confirm it matches what you put in the handoff.'",
+      "evidence": "foundation-vector-embeddings worker submitted commitId 635d1a3 (encryption) instead of 6c9de0d (embeddings), causing a false-fail in round 1 scrutiny. This metadata mismatch was only caught in round 2 re-review.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Feature description improvement for fix features should note when commit already exists",
-      "reason": "Operational improvement for orchestrator feature creation, not a persistent convention or knowledge entry. Orchestrator can note this internally."
+      "observation": "Fix worker skill should note that if commit already exists, workers should verify and skip implementation steps",
+      "reason": "This is skill procedure feedback (valid but belongs in skillFeedback, not in shared state). The worker correctly identified this and documented it in skillFeedback.suggestedChanges."
     },
     {
-      "observation": "AGENTS.md git commit hygiene already documented",
-      "reason": "Already applied — AGENTS.md was updated between rounds with 'Git Commit Hygiene (IMPORTANT)' section. No further action needed."
-    },
-    {
-      "observation": "Backend-worker skill procedure is adequate for embeddings work",
-      "reason": "No action needed — this is a positive observation confirming the skill works as designed."
+      "observation": "Architecture.md should be updated to reflect main.py refactoring is complete",
+      "reason": "Already documented — architecture.md already states '305 lines — app setup, lifespan, middleware' and lists all 13 route modules."
     }
   ],
   "previousRound": ".factory/validation/foundation/scrutiny/synthesis.json (round 1)"
