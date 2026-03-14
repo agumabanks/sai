@@ -1,0 +1,68 @@
+commands:
+  install_backend: /opt/antigravity/venv/bin/pip install -r /var/www/ai.sanaa.co/backend/requirements.txt
+  install_frontend: cd /var/www/ai.sanaa.co/frontend && composer install --no-interaction
+  test_backend: cd /var/www/ai.sanaa.co/backend && /opt/antigravity/venv/bin/python3 -m pytest tests/ -v --tb=short -x -j4
+  test_frontend: cd /var/www/ai.sanaa.co/frontend && php artisan test
+  typecheck_frontend: cd /var/www/ai.sanaa.co/frontend && php -l app/**/*.php 2>&1 | head -50
+  lint_frontend: cd /var/www/ai.sanaa.co/frontend && ./vendor/bin/pint --test 2>&1 | tail -20
+
+services:
+  backend:
+    start: sudo systemctl start antigravity-web
+    stop: sudo systemctl stop antigravity-web
+    restart: sudo systemctl restart antigravity-web
+    healthcheck: curl -sf http://127.0.0.1:8101/api/health
+    port: 8101
+    depends_on: [postgres, redis]
+
+  celery_worker:
+    start: sudo systemctl start antigravity-worker
+    stop: sudo systemctl stop antigravity-worker
+    restart: sudo systemctl restart antigravity-worker
+    healthcheck: sudo systemctl is-active antigravity-worker
+    port: null
+    depends_on: [redis]
+
+  celery_beat:
+    start: sudo systemctl start antigravity-beat
+    stop: sudo systemctl stop antigravity-beat
+    restart: sudo systemctl restart antigravity-beat
+    healthcheck: sudo systemctl is-active antigravity-beat
+    port: null
+    depends_on: [redis]
+
+  frontend:
+    start: sudo systemctl start php8.4-fpm && sudo systemctl start nginx
+    stop: sudo systemctl stop php8.4-fpm
+    restart: sudo systemctl restart php8.4-fpm && sudo systemctl restart nginx
+    healthcheck: curl -sf https://ai.sanaa.co/login -o /dev/null -w "%{http_code}"
+    port: 443
+    depends_on: [backend]
+
+  postgres:
+    start: sudo systemctl start postgresql
+    stop: sudo systemctl stop postgresql
+    healthcheck: pg_isready -h localhost -p 5432
+    port: 5432
+    depends_on: []
+
+  redis:
+    start: sudo systemctl start redis-server
+    stop: sudo systemctl stop redis-server
+    healthcheck: redis-cli ping
+    port: 6379
+    depends_on: []
+
+  mysql:
+    start: sudo systemctl start mysql
+    stop: sudo systemctl stop mysql
+    healthcheck: mysqladmin ping -h 127.0.0.1 2>/dev/null
+    port: 3306
+    depends_on: []
+
+  ollama:
+    start: sudo systemctl start ollama
+    stop: sudo systemctl stop ollama
+    healthcheck: curl -sf http://127.0.0.1:11434/api/tags
+    port: 11434
+    depends_on: []
