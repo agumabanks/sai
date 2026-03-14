@@ -713,6 +713,33 @@ class SkillParameterProfile(Base, ActiveRecordMixin):
     )
 
 
+# ==================== LEARNING LOGS ====================
+
+class LearningLog(Base, ActiveRecordMixin):
+    """OpenClaw-inspired structured learning log entries.
+
+    Three log types: LEARNINGS (insights/facts), ERRORS (mistakes/failures),
+    FEATURE_REQUESTS (user suggestions). Entries can be promoted to system
+    context when patterns are detected repeatedly.
+    """
+    __tablename__ = "learning_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    log_type = Column(String(30), nullable=False, index=True)  # LEARNINGS, ERRORS, FEATURE_REQUESTS
+    source = Column(String(30), nullable=False)  # conversation, reflection, error, user
+    content = Column(Text, nullable=False)
+    confidence = Column(Float, default=0.5, nullable=False)
+    category = Column(String(100), nullable=False, index=True)
+    promoted = Column(Boolean, default=False, nullable=False)
+    promotion_timestamp = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_learning_logs_type_ts", "log_type", "timestamp"),
+        Index("idx_learning_logs_category", "category"),
+        Index("idx_learning_logs_promoted", "promoted"),
+    )
+
+
 # ==================== DB INIT ====================
 
 async def init_db():
