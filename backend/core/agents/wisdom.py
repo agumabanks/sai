@@ -6,15 +6,15 @@ Meditates on logs and alerts to find patterns and suggest permanent fixes.
 import json
 import logging
 from datetime import datetime, timezone, timedelta
-from core.brain.engine import Brain
+from core.brain import get_shared_brain
 from core.database import Alert, AuditLog, SystemKnowledge, AsyncSessionLocal
 from sqlalchemy import select, desc
 
 logger = logging.getLogger(__name__)
 
 class WisdomAgent:
-    def __init__(self):
-        self.brain = Brain()
+    def __init__(self, brain=None):
+        self.brain = brain or get_shared_brain()
 
     async def meditate(self):
         """Perform a deep scan of recent system metadata to find 'Wisdom'."""

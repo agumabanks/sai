@@ -5,7 +5,7 @@ import json
 import hashlib
 import logging
 from datetime import datetime, timezone
-from core.brain import Brain
+from core.brain import get_shared_brain
 from core.config import get_settings
 from core.intelligence.memory import IntelligenceMemory
 
@@ -34,9 +34,9 @@ class HealthEvent:
             logger.info(log_msg)
 
 class ServerHealthAgent:
-    def __init__(self):
+    def __init__(self, brain=None):
         self.settings = get_settings()
-        self.brain = Brain()
+        self.brain = brain or get_shared_brain()
         self.memory = IntelligenceMemory()
         self.thresholds = {
             "cpu": int(os.getenv("CPU_ALERT_THRESHOLD", 85)),
@@ -127,6 +127,9 @@ class ServerHealthAgent:
             alerts.append({"severity": "high", "message": f"CPU at {snapshot['cpu']['percent']}%", "metric": "cpu"})
         if snapshot["memory"]["status"] == "critical":
             alerts.append({"severity": "high", "message": f"RAM at {snapshot['memory']['percent']}%", "metric": "memory"})
+        if snapshot["disk"]["percent"] >= 85:
+            alerts.append({"severity": "warning", "message": f"Disk usage at {snapshot['disk']['percent']}%. Only {snapshot['disk']['free_gb']}GB remaining. Prediction: Risk of filling up within 7-14 days.", "metric": "disk_prediction"})
+            
         for svc, status in snapshot["services"].items():
             if status != "active":
                 alerts.append({"severity": "critical", "message": f"Service {svc} is {status}", "metric": "service"})

@@ -32,31 +32,31 @@ TEST_SOURCE = "test_embeddings_suite"
 # ---------------------------------------------------------------------------
 
 
-async def _get_fresh_session():
-    """Create a fresh async session that works on the current event loop.
-
-    The module-level engine in core/database.py may have connections pooled on
-    a different loop (from earlier test modules). Disposing it forces new
-    connections on the *current* loop.
-    """
-    from core.database import engine, AsyncSessionLocal
-
-    await engine.dispose()
-    return AsyncSessionLocal()
-
-
 async def _cleanup():
-    """Remove any memories created by tests."""
-    from core.database import engine, AsyncSessionLocal
+    """Remove any memories created by tests.
+
+    Uses a one-shot engine+session tied to the *current* event loop to
+    avoid asyncpg InterfaceError ("another operation is in progress") that
+    occurs when the module-level pool has stale connections from a
+    previous loop.
+    """
+    from core.config import get_settings
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
     from sqlalchemy import text
 
-    await engine.dispose()
-    async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("DELETE FROM agent_memory WHERE source = :src"),
-            {"src": TEST_SOURCE},
-        )
-        await session.commit()
+    _settings = get_settings()
+    _engine = create_async_engine(_settings.database_url_async, echo=False)
+    _Session = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with _Session() as session:
+            await session.execute(
+                text("DELETE FROM agent_memory WHERE source = :src"),
+                {"src": TEST_SOURCE},
+            )
+            await session.commit()
+    finally:
+        await _engine.dispose()
 
 
 # ===========================================================================
@@ -265,12 +265,18 @@ class TestNullEmbeddings:
 async def fresh_db():
     """Dispose the module-level engine so connections are created on the
     current event loop. Required for tests that use MemoryManager (which
-    internally calls AsyncSessionLocal)."""
+    internally calls AsyncSessionLocal).
+
+    We only dispose at setup. Disposing during teardown while the event
+    loop is shutting down causes asyncpg InterfaceError ("cannot perform
+    operation: another operation is in progress") or RuntimeError ("Task
+    got Future attached to a different loop")."""
     from core.database import engine
 
     await engine.dispose()
     yield
-    await engine.dispose()
+    # NOTE: intentionally no teardown dispose — the next test's setup
+    # will dispose the engine when it needs a fresh pool.
 
 
 # ===========================================================================

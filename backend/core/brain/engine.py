@@ -767,3 +767,35 @@ Respond ONLY in JSON with:
     async def recall(self, query: str, limit: int = 5) -> list[dict]:
         """Search long-term memory."""
         return await self.memory.search(query, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Shared Brain Factory
+# ---------------------------------------------------------------------------
+
+_shared_brain: Optional[Brain] = None
+
+
+def get_shared_brain() -> Brain:
+    """Return a module-level shared Brain instance.
+
+    All agents should call this instead of ``Brain()`` so they share the same
+    MemoryManager, ContextAssembler, and SkillRegistry.  The Brain's lazy
+    properties (memory, context_assembler, skill_registry) are initialised
+    once and reused across agents, ensuring that a memory stored by one agent
+    is visible to every other agent.
+
+    Thread-safety note: Brain is not thread-safe by design (async only).
+    This is fine because the FastAPI/Celery event loop is single-threaded.
+    """
+    global _shared_brain
+    if _shared_brain is None:
+        _shared_brain = Brain()
+        logger.info("Shared Brain instance created — all agents will share memory context")
+    return _shared_brain
+
+
+def reset_shared_brain() -> None:
+    """Reset the shared Brain instance (useful for testing)."""
+    global _shared_brain
+    _shared_brain = None

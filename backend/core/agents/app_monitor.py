@@ -6,7 +6,7 @@ import hashlib
 import logging
 import asyncio
 from datetime import datetime
-from core.brain import Brain
+from core.brain import get_shared_brain
 from core.config import get_settings
 from core.intelligence.memory import IntelligenceMemory
 from core.intelligence.persistence import archive_knowledge
@@ -34,9 +34,9 @@ class AppEvent:
             logger.info(log_msg)
 
 class AppMonitorAgent:
-    def __init__(self):
+    def __init__(self, brain=None):
         self.settings = get_settings()
-        self.brain = Brain()
+        self.brain = brain or get_shared_brain()
         self.memory = IntelligenceMemory()
         self.log_pattern = "/var/www/*/storage/logs/laravel.log"
         self.known_errors_file = "/opt/antigravity/data/known_errors.json"

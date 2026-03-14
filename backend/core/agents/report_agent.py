@@ -5,12 +5,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from core.brain import Brain # Moved import to top-level
+from core.brain import get_shared_brain
 from core.config import get_settings
 
 class ReportAgent:
-    def __init__(self):
-        self.brain = Brain() # Added initialization of Brain
+    def __init__(self, brain=None):
+        self.brain = brain or get_shared_brain()
         self.smtp_host = os.getenv("SMTP_HOST")
         self.smtp_port = int(os.getenv("SMTP_PORT", 587))
         self.smtp_user = os.getenv("SMTP_USER")
@@ -20,6 +20,22 @@ class ReportAgent:
 
     async def send_alert_email(self, subject: str, body: str):
         """Send an alert email immediately"""
+        from core.database import SystemKnowledge
+        is_enabled = await SystemKnowledge.get_pref("alert.enabled", True)
+
+        if isinstance(is_enabled, str):
+            enabled = is_enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        else:
+            enabled = bool(is_enabled)
+
+        if not enabled:
+            print("Alert email skipped: disabled in system preferences.")
+            return False
+
+        if not self.smtp_host:
+            print("Alert email skipped: SMTP_HOST is not configured.")
+            return False
+            
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
@@ -67,8 +83,7 @@ class ReportAgent:
 
     async def send_daily_report(self, health: dict, alerts: list, email_summary: dict, news: dict):
         """Send the daily morning report"""
-        from core.brain import Brain
-        brain = Brain()
+        brain = self.brain
 
         # Let LLM compose a natural report
         report_prompt = f"""Compose a concise daily operations report for Banks.
