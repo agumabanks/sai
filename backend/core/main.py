@@ -57,6 +57,7 @@ from core.routes.watchdog import router as watchdog_router
 from core.routes.sellers import router as sellers_router
 from core.routes.tenants import router as tenants_router, seed_initial_tenants
 from core.routes.marketing import router as marketing_router
+from core.routes.audit import router as audit_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -321,3 +322,4 @@ app.include_router(watchdog_router)
 app.include_router(sellers_router)
 app.include_router(tenants_router)
 app.include_router(marketing_router)
+app.include_router(audit_router)
