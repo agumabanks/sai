@@ -1,0 +1,31 @@
+name: self_improve
+version: "2.0.0"
+description: >
+  OpenClaw-inspired self-improving agent skill. Analyzes recent skill failures
+  and error logs, detects recurring patterns in learning logs, and generates
+  actionable improvement recommendations via LLM. Logs all findings and actions
+  to the structured learning system for continuous improvement.
+permissions: [network, database]
+requires_approval: false
+timeout: 120
+tags: [self-improving, learning, analysis, autonomous, openclaw]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: analyze_errors (scan recent skill failures and create ERRORS entries),
+      learn_patterns (detect recurring themes in learning logs and create LEARNINGS),
+      suggest_improvements (generate actionable improvement recommendations via LLM).
+    required: true
+    enum: [analyze_errors, learn_patterns, suggest_improvements]
+  - name: limit
+    type: integer
+    description: "Maximum number of entries to analyze (default: 50)."
+    required: false
+    default: 50
+  - name: days
+    type: integer
+    description: "Number of days to look back for analysis (default: 7)."
+    required: false
+    default: 7
