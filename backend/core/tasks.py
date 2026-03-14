@@ -103,6 +103,13 @@ app.conf.beat_schedule = {
         'task': 'core.tasks.code_quality_sweep',
         'schedule': crontab(hour=2, minute=30, day_of_week='mon'),  # Weekly Monday 2:30 AM EAT
     },
+
+    # ===== BACKUP AUTOMATION =====
+    'backup-all': {
+        'task': 'core.tasks.run_backup',
+        'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM EAT
+        'kwargs': {'target': 'all'},
+    },
 }
 
 
@@ -662,5 +669,68 @@ def send_email_campaign(campaign_id: int):
                 details={"campaign_id": campaign_id, "error": str(e)},
                 success=False,
             )
+
+    _run_async(_run())
+
+
+@app.task
+def run_backup(target: str = "all"):
+    """Execute automated backups. Called by Celery Beat or schedule_backup action."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from skills.backup_automation.handler import BackupAutomationSkill
+        from core.skills.base import SkillContext
+        from core.database import AuditLog
+
+        skill = BackupAutomationSkill()
+        context = SkillContext(session_id="celery:backup", channel="system")
+        results = {}
+
+        targets = (
+            ["postgres", "mysql", "configs"]
+            if target == "all"
+            else [target]
+        )
+
+        for t in targets:
+            action_map = {
+                "postgres": "backup_postgres",
+                "mysql": "backup_mysql",
+                "configs": "backup_configs",
+            }
+            action = action_map.get(t)
+            if not action:
+                logger.warning(f"[Backup] Unknown target: {t}")
+                continue
+
+            try:
+                result = await skill.execute({"action": action}, context)
+                results[t] = {
+                    "success": result.success,
+                    "output": result.output[:500] if result.output else "",
+                    "error": result.error,
+                }
+                logger.info(
+                    f"[Backup] {t}: {'OK' if result.success else 'FAILED'} — "
+                    f"{result.output[:100] if result.output else result.error}"
+                )
+            except Exception as e:
+                logger.error(f"[Backup] {t} failed with exception: {e}", exc_info=True)
+                results[t] = {"success": False, "error": str(e)}
+
+        # Audit log
+        all_ok = all(r.get("success") for r in results.values())
+        try:
+            await AuditLog.log(
+                actor="celery:backup",
+                action="backup.scheduled_run",
+                resource=f"target:{target}",
+                details=results,
+                success=all_ok,
+            )
+        except Exception as e:
+            logger.error(f"[Backup] Failed to write audit log: {e}")
 
     _run_async(_run())

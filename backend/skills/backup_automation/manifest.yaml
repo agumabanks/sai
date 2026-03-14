@@ -1,0 +1,37 @@
+name: backup_automation
+version: "1.0.0"
+description: >
+  Scheduled database and configuration backup automation.
+  Perform PostgreSQL dumps, MySQL dumps for finance tenant databases,
+  archive key configuration files, check backup status, and schedule
+  automated backups via Celery periodic tasks.
+permissions: [shell]
+requires_approval: true
+timeout: 300
+tags: [backup, database, automation, infrastructure, system]
+category: system
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      Action to perform: backup_postgres (pg_dump to /var/backups/sanaa/postgres/),
+      backup_mysql (mysqldump for finance tenant DBs to /var/backups/sanaa/mysql/),
+      backup_configs (archive key config files to /var/backups/sanaa/configs/),
+      backup_status (report last backup time, size, success/failure per target),
+      schedule_backup (register Celery periodic task for automated backups).
+    required: true
+    enum: [backup_postgres, backup_mysql, backup_configs, backup_status, schedule_backup]
+  - name: database
+    type: string
+    description: "Specific database name for backup_postgres or backup_mysql. If omitted, backs up all configured databases."
+    required: false
+  - name: schedule
+    type: string
+    description: "Cron schedule expression for schedule_backup (e.g. '0 2 * * *' for daily at 2 AM). Defaults to daily at 2 AM EAT."
+    required: false
+  - name: target
+    type: string
+    description: "Backup target for schedule_backup: postgres, mysql, configs, or all. Defaults to 'all'."
+    required: false
+    enum: [postgres, mysql, configs, all]
