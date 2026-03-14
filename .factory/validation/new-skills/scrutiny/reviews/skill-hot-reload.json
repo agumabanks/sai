@@ -1,0 +1,50 @@
+{
+  "featureId": "skill-hot-reload",
+  "reviewedAt": "2026-03-14T08:15:00.000Z",
+  "commitId": "ea8bf31",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of SkillFileWatcher using the watchdog library. The class monitors backend/skills/ directories for changes to manifest.yaml and handler.py files. On change, it validates the manifest via parse_manifest(), invalidates bytecode caches, reloads the handler module through SkillLoader.load(), applies manifest metadata to the skill instance, and updates the SkillRegistry. Invalid changes (bad manifest, broken handler, missing files) are caught and logged without crashing the watcher. The watcher integrates correctly into main.py's lifespan (start on startup, stop on shutdown) as a background daemon thread. Debounce prevents rapid-fire events. 25 comprehensive tests all pass covering init, manifest/handler reload, file detection, error handling, registry integration, brain tool loop, debounce, and set_registry. The Brain's tool loop picks up reloaded skills automatically because the watcher updates the same SkillRegistry instance.",
+    "issues": [
+      {
+        "file": "backend/core/skills/hot_reload.py",
+        "line": 174,
+        "severity": "non_blocking",
+        "description": "The _reload_skill_sync method uses asyncio.get_running_loop() to detect if it's inside an async context, then calls run_coroutine_threadsafe().result(timeout=30). Since this runs in a watchdog-spawned daemon thread, there is typically no running loop in that thread, so it always falls through to asyncio.run(). The run_coroutine_threadsafe path would only activate during tests or unusual threading scenarios. This is not a bug but the branching logic could be simplified since the production path always uses asyncio.run()."
+      },
+      {
+        "file": "backend/core/skills/hot_reload.py",
+        "line": 152,
+        "severity": "non_blocking",
+        "description": "In _schedule_reload(), if both manifest.yaml and handler.py change simultaneously (e.g., during a git checkout), only the first file event triggers a reload due to per-skill debounce. The second file's change is silently dropped. This is acceptable since the reload processes both files regardless of which one triggered it, but it could be confusing if someone edits only handler.py right after editing manifest.yaml within the debounce window."
+      },
+      {
+        "file": "backend/core/skills/hot_reload.py",
+        "line": 220,
+        "severity": "non_blocking",
+        "description": "After a failed reload (e.g., broken handler), the previous working version of the skill remains in the registry. This is sensible 'last known good' behavior but is not explicitly documented in the class docstring. Could cause confusion if operators expect a failed reload to disable the skill."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The handoff for this feature references commitId '3bc3074' (which is actually the calendar skill commit), while the real hot-reload commit is 'ea8bf31'. The transcript skeleton for session 25b37162-29b2-430e-bcae-6b8aeb61578e shows the worker implementing a calendar skill, not the hot-reload feature. The actual hot-reload code was committed correctly but the handoff metadata has incorrect commit attribution.",
+      "evidence": "Handoff file 2026-03-14T06-47-04-189Z__skill-hot-reload__25b37162-29b2-430e-bcae-6b8aeb61578e.json has commitId '3bc3074'. git log shows: ea8bf31 = 'Implement skill hot-reload with file watcher', 3bc3074 = 'Implement calendar skill with task management and scheduling'."
+    },
+    {
+      "area": "conventions",
+      "observation": "The watchdog library was added to requirements.txt (watchdog>=6.0). AGENTS.md does not mention this dependency or the hot-reload watcher as part of the backend architecture. Since the watcher starts automatically on app startup, operators should know about it.",
+      "evidence": "backend/requirements.txt line 65: 'watchdog>=6.0'. backend/core/main.py lifespan starts the watcher automatically."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the backend-worker skill procedure correctly (except for test-first which is acknowledged as impractical for new file creation). The skill feedback notes this: 'for new file creation, test-first is optional.'",
+      "evidence": "handoff.skillFeedback.followedProcedure = true, suggestedChanges notes the test-first deviation for new files."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The skill-hot-reload feature is correctly implemented. SkillFileWatcher uses the watchdog library to monitor backend/skills/ for changes to manifest.yaml and handler.py files. On detected changes, it validates manifests, reloads handler modules (with bytecode cache invalidation), and updates the skill registry. Error handling is robust — invalid manifests, broken handlers, and missing files are all caught and logged without crashing the watcher. The watcher starts as a daemon thread during app startup and stops on shutdown, integrated into main.py's lifespan. All 25 tests pass, covering initialization, manifest/handler reload paths, file detection, error cases, registry integration, brain tool loop integration, debounce, and registry switching. The only notable discrepancy is the handoff metadata referencing the wrong commitId (calendar commit instead of hot-reload commit), but the actual code is correct."
+}

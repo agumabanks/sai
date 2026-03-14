@@ -1,0 +1,51 @@
+{
+  "featureId": "skill-social-media",
+  "reviewedAt": "2026-03-14T07:12:00.000Z",
+  "commitId": "ae13dcf3ae36e05bb64be4be4a21f6ea0d6c45d5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The social_media skill is well-implemented with 3 actions (create_content, schedule_post, analytics_summary), platform-specific LLM templates (Twitter 280-char limit enforced, LinkedIn professional tone, Facebook casual tone), proper DB storage for scheduled posts via ScheduledPost model, and comprehensive input validation. 27 tests all pass covering manifest validation, skill loading, all 3 actions, edge cases (invalid platform, missing params, no brain), and API integration. NOTE: The handoff for worker session 73b2f3ba references commitId 8b3214cb (memory-consolidation), but the actual social_media implementation is in commit ae13dcf. The transcript skeleton shows the worker implementing memory consolidation instead of social media — however, the social_media code exists in the repo (committed as ae13dcf) and is fully functional.",
+    "issues": [
+      {
+        "file": "backend/skills/social_media/handler.py",
+        "line": 157,
+        "severity": "non_blocking",
+        "description": "schedule_post uses raw SQL via text() for INSERT instead of using the ScheduledPost ORM model defined in core/database.py. While functional, this is inconsistent — the model exists but isn't used. ORM usage would provide better type safety and consistency with the codebase pattern."
+      },
+      {
+        "file": "backend/skills/social_media/handler.py",
+        "line": 195,
+        "severity": "non_blocking",
+        "description": "analytics_summary also uses raw SQL via text() for SELECT queries instead of ORM. Same inconsistency as schedule_post — the ScheduledPost model exists but is unused in queries."
+      },
+      {
+        "file": "backend/skills/social_media/handler.py",
+        "line": 137,
+        "severity": "non_blocking",
+        "description": "schedule_post does not validate that scheduled_time is in the future. A post can be scheduled for a past datetime without error. Minor UX issue."
+      },
+      {
+        "file": "backend/skills/social_media/handler.py",
+        "line": 95,
+        "severity": "non_blocking",
+        "description": "Logger calls use f-strings (e.g., logger.error(f'[SocialMedia] LLM generation failed: {e}')) instead of lazy formatting (logger.error('[SocialMedia] LLM generation failed: %s', e)). Style-only issue."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The handler uses raw SQL via text() for database operations instead of the SQLAlchemy ORM model (ScheduledPost) that was defined in core/database.py. AGENTS.md says 'Database models: Define in core/database.py using SQLAlchemy 2.0 declarative base' but doesn't explicitly state that handlers should use ORM for queries rather than raw SQL. This should be clarified to prevent future inconsistency.",
+      "evidence": "backend/skills/social_media/handler.py:157 uses text('INSERT INTO scheduled_posts...') while backend/core/database.py:745 defines ScheduledPost ORM model with all the same columns."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker session 73b2f3ba was assigned skill-social-media but its transcript and handoff describe implementing memory consolidation (wrong feature). The handoff commitId 8b3214cb is the memory-consolidation commit, not the social_media commit (ae13dcf). This indicates a session-to-feature mapping issue in the orchestration layer. The social_media code was correctly implemented in a separate commit.",
+      "evidence": "Handoff file 2026-03-14T05-54-24-322Z__skill-social-media__73b2f3ba.json has commitId 8b3214cb and salientSummary mentions 'daily memory consolidation system'. Transcript skeleton shows the worker creating backend/core/memory/consolidation.py. Actual social_media commit is ae13dcf."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS — The social_media skill implementation is complete and correct. All 3 required actions (create_content, schedule_post, analytics_summary) are implemented with proper platform-specific templates, DB storage, input validation, and error handling. 27 tests pass covering all expected behaviors including edge cases. The manifest correctly declares category: marketing and permissions: [network]. Non-blocking issues: raw SQL used instead of ORM model, no past-time validation for schedule_post. Notable process issue: the handoff/transcript for this worker session actually describes memory consolidation work, but the social_media code exists in a separate commit (ae13dcf) and is fully functional."
+}

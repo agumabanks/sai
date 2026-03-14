@@ -1,0 +1,56 @@
+{
+  "featureId": "skill-research-upgrade",
+  "reviewedAt": "2026-03-14T07:15:00.000Z",
+  "commitId": "aa872d8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "CRITICAL: Worker session 5e4b3675 was assigned feature 'skill-research-upgrade' but implemented an entirely different feature ('content_generator') instead. The handoff references commit aa872d8, which creates backend/skills/content_generator/ — not the research_agent upgrade. The transcript clearly shows the worker building content_generator manifest, handler, and tests throughout the session. The actual research_agent v2.0 upgrade exists in a separate commit (6f5726e, 5 minutes later) that is NOT referenced in this session's handoff and was apparently made by a different context. The research_agent code on disk (from 6f5726e) is well-implemented with a proper multi-step pipeline (query formulation → DuckDuckGo search → httpx+bs4 extraction → LLM synthesis → memory storage), 56 passing tests, and good error handling. However, this session did not produce that work.",
+    "issues": [
+      {
+        "file": "backend/skills/content_generator/handler.py",
+        "line": 1,
+        "severity": "blocking",
+        "description": "Worker implemented content_generator skill instead of upgrading research_agent. Commit aa872d8 creates content_generator/{__init__.py,handler.py,manifest.yaml} and tests/skills/test_content_generator.py — none of which relate to the assigned feature 'skill-research-upgrade'. The handoff summary explicitly says 'Implemented content_generator skill with 4 actions (blog_post, social_copy, email_copy, brand_voice)'. This is a complete feature mismatch."
+      },
+      {
+        "file": "backend/skills/research_agent/handler.py",
+        "line": 87,
+        "severity": "non_blocking",
+        "description": "Synchronous DuckDuckGo search (_ddg_search uses DDGS().text() which is blocking) called from async context without asyncio.run_in_executor(). This could block the event loop during search operations. (Note: this issue is in code from commit 6f5726e, not from the reviewed session.)"
+      },
+      {
+        "file": "backend/skills/research_agent/handler.py",
+        "line": 10,
+        "severity": "non_blocking",
+        "description": "Unused import: 'from sqlalchemy import text' is imported but never used. (Note: this is in code from commit 6f5726e, not from the reviewed session.)"
+      },
+      {
+        "file": "backend/skills/research_agent/handler.py",
+        "line": 240,
+        "severity": "non_blocking",
+        "description": "MemoryManager() is instantiated fresh each time _store_in_memory is called rather than being obtained from context or as a singleton. This creates unnecessary overhead and doesn't leverage any existing connection pooling. (Note: from commit 6f5726e.)"
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker session was assigned 'skill-research-upgrade' but implemented 'content_generator' instead. This suggests a systemic issue with feature-to-session assignment or worker confusion about which feature to implement. Multiple handoffs in this milestone show similar mismatches (e.g., skill-content-generation session cfc580d4 implemented market_intelligence instead). AGENTS.md doesn't have guidance about verifying feature assignment before starting work.",
+      "evidence": "Handoff salientSummary: 'Implemented content_generator skill with 4 actions (blog_post, social_copy, email_copy, brand_voice)'. Commit aa872d8 stat shows only content_generator files. Transcript shows worker creating content_generator/manifest.yaml and content_generator/handler.py throughout."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill's procedure says 'Read the feature description, preconditions, expectedBehavior, and verificationSteps carefully' in Step 1, but the worker appears to have ignored these entirely — the feature description says 'Upgrade the existing research_agent skill' but the worker built a completely new content_generator skill. The skill procedure may need a stronger verification checkpoint (e.g., 'Confirm the feature ID and description match what you're about to implement before writing any code').",
+      "evidence": "Feature description explicitly mentions 'research_agent', 'DuckDuckGo', 'multi-step web research'. Transcript shows worker building content_generator with blog_post, social_copy, email_copy, brand_voice actions — zero overlap with the assigned feature."
+    },
+    {
+      "area": "conventions",
+      "observation": "The handoff's skillFeedback.followedProcedure is set to true despite the worker implementing the wrong feature entirely. This indicates the self-reporting mechanism is unreliable for catching fundamental assignment errors.",
+      "evidence": "Handoff skillFeedback: {followedProcedure: true, deviations: [], suggestedChanges: []}. But the worker did not implement the assigned feature at all."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL — Worker session 5e4b3675 implemented content_generator skill (commit aa872d8) instead of the assigned research_agent upgrade. The handoff, transcript, and commit all confirm content_generator was built, not research_agent. The actual research_agent v2.0 upgrade exists in a separate unlinked commit (6f5726e) from a different context — that code is solid with 56 passing tests and proper multi-step flow (query formulation, DDG search, httpx+bs4 extraction, LLM synthesis, memory storage). However, the reviewed session's work does not match the feature assignment. This is a blocking mismatch."
+}

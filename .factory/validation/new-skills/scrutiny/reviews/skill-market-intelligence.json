@@ -1,0 +1,56 @@
+{
+  "featureId": "skill-market-intelligence",
+  "reviewedAt": "2026-03-14T07:30:00.000Z",
+  "commitId": "1646957",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The market_intelligence skill is fully implemented with all 4 required actions (scan_market, analyze_trends, competitor_watch, report). Uses httpx + beautifulsoup4 for web/RSS fetching, Brain/LLM for trend analysis and report generation, and SHA-256 content hashing for competitor change detection. Signals are persisted to the strategic_signals table. 29 tests all pass covering manifest validation, skill loading, all actions with mocked dependencies, error handling, helper functions, and registry integration. The code follows existing skill patterns (BaseSkill subclass, manifest.yaml + handler.py structure). NOTE: The handoff from completedWorkerSessionId d2ed2e21 incorrectly reports implementing email_marketing (commit 678b0cc), but the actual market_intelligence implementation exists in commit 1646957 created ~3 minutes later by the same author. The feature's functional requirements are fully met.",
+    "issues": [
+      {
+        "file": "backend/skills/market_intelligence/handler.py",
+        "line": 283,
+        "severity": "non_blocking",
+        "description": "competitor_watch stores SHA-256 content hashes in the 'business_impact' column of strategic_signals. This is a semantic misuse — 'business_impact' is meant for text describing business impact, not hash values. While functional, this makes the data confusing to read and could cause issues if other features interpret business_impact as descriptive text. A dedicated column or a separate table for URL hashes would be cleaner."
+      },
+      {
+        "file": "backend/skills/market_intelligence/handler.py",
+        "line": 128,
+        "severity": "non_blocking",
+        "description": "_store_signal silently catches and logs all DB exceptions without propagating failure to callers. In scan_market, this means the output could report 'Signals stored: 20' when none were actually persisted due to DB errors. Consider returning a bool or incrementing stored count only on success."
+      },
+      {
+        "file": "backend/skills/market_intelligence/handler.py",
+        "line": 45,
+        "severity": "non_blocking",
+        "description": "_fetch_url creates a new httpx.AsyncClient per URL call. When scanning many feeds or monitoring many competitor URLs, this creates unnecessary connection overhead. A shared client instance (passed as parameter or created once per action invocation) would be more efficient."
+      },
+      {
+        "file": "backend/skills/market_intelligence/handler.py",
+        "line": 115,
+        "severity": "non_blocking",
+        "description": "_store_signal uses raw SQL via text() instead of the SQLAlchemy ORM StrategicSignal model defined in core/database.py line 496. Using the ORM model would be more maintainable and consistent with other parts of the codebase."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Worker did not follow the backend-worker skill's 'Write Tests FIRST (Red Phase)' procedure. The transcript shows the worker wrote tests alongside implementation (created handler.py and test file in the same phase), never running tests to confirm they fail first. The skill procedure explicitly requires: 'Run tests to confirm they FAIL' before implementation begins.",
+      "evidence": "Transcript skeleton shows Create for handler.py and test file in close sequence without an intermediate pytest run showing failures. The handoff's skillFeedback.followedProcedure is 'true' but the transcript contradicts this."
+    },
+    {
+      "area": "conventions",
+      "observation": "Worker session d2ed2e21 was assigned feature skill-market-intelligence but the transcript, handoff, and commit 678b0cc all describe implementing email_marketing instead. The actual market_intelligence commit (1646957) was created ~3 minutes later but is NOT referenced in the handoff. The handoff's commitId, salientSummary, whatWasImplemented, and test details all describe email_marketing. This indicates the worker implemented two different features in one session and only reported one in the handoff.",
+      "evidence": "Handoff commitId=678b0cc (email_marketing commit). Actual market_intelligence commit=1646957 (created Mar 14 07:13:36 vs handoff at 06:10:59). Handoff salientSummary mentions 'email_marketing skill with 4 actions (create_campaign, send_campaign, list_campaigns, audience_segment)'."
+    },
+    {
+      "area": "conventions",
+      "observation": "The market_intelligence skill uses raw SQL with text() for DB operations (INSERT and SELECT on strategic_signals) instead of the SQLAlchemy ORM model. AGENTS.md says 'Database models: Define in core/database.py using SQLAlchemy 2.0 declarative base' but doesn't explicitly require using ORM for all queries. Consider adding guidance to AGENTS.md that skills should use ORM models rather than raw SQL when a model exists.",
+      "evidence": "handler.py lines 115-134 use text() INSERT, lines 239-248 and 311-320 use text() SELECT. StrategicSignal ORM model exists at core/database.py line 496."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The market_intelligence skill is properly implemented with all 4 required actions (scan_market, analyze_trends, competitor_watch, report), correct category (research) and permissions (network), signal storage in strategic_signals, and 29 passing tests. The implementation uses httpx + beautifulsoup4 for web fetching and Brain/LLM for analysis as specified. Non-blocking issues include: business_impact column reused for hash storage, silent DB error handling in _store_signal, new httpx client per fetch, and raw SQL instead of ORM. The main process concern is that the handoff incorrectly references an email_marketing commit (678b0cc) instead of the actual market_intelligence commit (1646957), suggesting the worker implemented two features in one session and mis-reported the handoff."
+}

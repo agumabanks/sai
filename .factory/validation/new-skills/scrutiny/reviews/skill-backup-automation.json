@@ -1,0 +1,56 @@
+{
+  "featureId": "skill-backup-automation",
+  "reviewedAt": "2026-03-14T07:45:00.000Z",
+  "commitId": "7bf5d52",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The backup_automation skill is fully implemented with all 5 required actions (backup_postgres, backup_mysql, backup_configs, backup_status, schedule_backup). The handler uses asyncio.create_subprocess_exec (shell=False) for safe command execution, includes timeout handling, and records backup status to a JSON file. The manifest correctly declares shell permissions, requires_approval=true, category=system, and all action enum values. Celery Beat integration is properly wired in core/tasks.py with a run_backup task and default daily 2AM schedule. All 40 tests pass covering manifest validation, skill loading, all 5 actions with success/failure/edge cases, Celery integration, API integration, and helper functions. NOTE: The handoff for this feature (commitId 6f5726e) actually references the research_agent v2.0 upgrade commit. The real backup_automation code is in commit 7bf5d52. The worker transcript shows the worker implemented research_agent, not backup_automation, despite being assigned the latter. The actual backup_automation implementation is sound and meets all requirements.",
+    "issues": [
+      {
+        "file": "backend/skills/backup_automation/handler.py",
+        "line": 13,
+        "severity": "non_blocking",
+        "description": "Unused imports: 'glob' (line 13), 'Path' from pathlib (line 19), and 'Any', 'Dict', 'List', 'Optional' from typing (line 20) are imported but never used in the handler module."
+      },
+      {
+        "file": "backend/skills/backup_automation/handler.py",
+        "line": 377,
+        "severity": "non_blocking",
+        "description": "MySQL password passed via command-line argument (-p{MYSQL_PASS}) which is visible in process listings (ps aux). This is a known security concern. Prefer using --defaults-extra-file or MYSQL_PWD environment variable. However, this matches the pre-existing pattern in server_monitor/handler.py which also uses -uroot -proot, so it's consistent with codebase conventions."
+      },
+      {
+        "file": "backend/skills/backup_automation/handler.py",
+        "line": 45,
+        "severity": "non_blocking",
+        "description": "Hardcoded MySQL credentials (MYSQL_USER='root', MYSQL_PASS='root') as module-level constants. While this matches the existing pattern in server_monitor, ideally these should come from config/settings. Not blocking since the same pattern exists elsewhere in the codebase."
+      },
+      {
+        "file": "backend/skills/backup_automation/handler.py",
+        "line": 115,
+        "severity": "non_blocking",
+        "description": "_load_status() and _save_status() do not use file locking. Concurrent backup operations (unlikely in practice since Celery runs them sequentially) could result in lost status updates due to race conditions."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The handoff for skill-backup-automation (commitId 6f5726e, session 04b6814a) actually describes the research_agent v2.0 upgrade, not backup_automation. The real backup_automation commit is 7bf5d52. The completedWorkerSessionId in features.json points to a session that worked on a different feature entirely. This is a serious tracking/coordination issue.",
+      "evidence": "Handoff salientSummary: 'Upgraded research_agent skill from v1.0 to v2.0 with a full multi-step web research pipeline...' — but feature is skill-backup-automation. Git show 6f5726e changes only research_agent files. Git show 7bf5d52 has the actual backup_automation files."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker skill procedure says 'Write Tests FIRST (Red Phase)' but the transcript skeleton shows the worker implemented research_agent code (not backup_automation) and did not follow test-first for either feature. The worker created handler.py before test_research_agent.py. Since the worker didn't even work on the assigned feature, the skill procedure adherence is moot.",
+      "evidence": "Transcript tool call order: Create handler.py → Create manifest.yaml → Create test_research_agent.py. skillFeedback.followedProcedure was set to true in the handoff, but the worker was working on the wrong feature entirely."
+    },
+    {
+      "area": "conventions",
+      "observation": "The backup_automation handler imports unused modules (glob, Path, Any, Dict, List, Optional). AGENTS.md doesn't mention a lint/cleanup step for imports. Could add a note about running import checking or keeping imports clean.",
+      "evidence": "backend/skills/backup_automation/handler.py lines 13, 19, 20 — glob, Path, Any/Dict/List/Optional never referenced in the module."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The backup_automation skill implementation is complete and functional. All 5 actions work correctly: backup_postgres (pg_dump with gzip), backup_mysql (mysqldump for finance tenants), backup_configs (tar archive of config files), backup_status (JSON-based status reporting), and schedule_backup (Celery Beat registration). The skill has requires_approval=true, shell permissions, and system category as required. Celery Beat integration in core/tasks.py adds a default daily backup-all schedule and a run_backup task with audit logging. All 40 tests pass. Non-blocking issues: unused imports, hardcoded MySQL credentials (consistent with existing codebase patterns), MySQL password in CLI args, and no file locking on status file. Critical tracking issue: the handoff and transcript for this feature actually describe the research_agent v2.0 upgrade — the real backup_automation code is in commit 7bf5d52, not the handoff's 6f5726e."
+}

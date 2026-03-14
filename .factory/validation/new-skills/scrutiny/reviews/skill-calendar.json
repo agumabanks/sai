@@ -1,0 +1,56 @@
+{
+  "featureId": "skill-calendar",
+  "reviewedAt": "2026-03-14T08:15:00Z",
+  "commitId": "3bc3074",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The calendar skill implementation in commit 3bc3074 is comprehensive and well-structured. All 6 required actions (create_task, list_tasks, update_task, complete_task, overdue_check, set_reminder) are correctly implemented in handler.py with proper input validation, async DB operations, and error handling. The manifest.yaml fully defines all parameters with enums. Two SQLAlchemy models (TaskCalendar, TaskReminder) are added to core/database.py with appropriate indexes. 38 tests in test_calendar.py cover all actions including success paths, error handling, edge cases, and registry integration. The skill correctly declares no permissions (no shell/network needed) and category 'productivity'. NOTE: The handoff from session f8e02774 describes implementing backup_automation (commit 7bf5d52), not calendar. The actual calendar implementation is in commit 3bc3074 which appears to have been done separately — the handoff/session mapping is incorrect, but the code deliverable is correct and complete.",
+    "issues": [
+      {
+        "file": "backend/skills/calendar/handler.py",
+        "line": 137,
+        "severity": "non_blocking",
+        "description": "Invalid reminder timestamps in the 'reminders' array for create_task are silently skipped (pass in except block). Users receive no feedback about which reminders failed to parse. Consider appending warnings to the output or returning a 'skipped_reminders' count in the data dict."
+      },
+      {
+        "file": "backend/skills/calendar/handler.py",
+        "line": 180,
+        "severity": "non_blocking",
+        "description": "Invalid date_from/date_to filters in list_tasks are silently ignored (pass in except blocks at lines 180 and 186). This could confuse users who provide a malformed date — they'd get unfiltered results without knowing their filter was dropped. Consider returning an error or a warning."
+      },
+      {
+        "file": "backend/core/database.py",
+        "line": 829,
+        "severity": "non_blocking",
+        "description": "TaskReminder.task_id has no ForeignKey constraint to tasks_calendar.id. However, this is consistent with the project-wide pattern — no other model in database.py uses ForeignKey constraints. The handler code does verify task existence before creating reminders, so this is acceptable but means orphan reminders could accumulate if tasks are deleted through other means."
+      },
+      {
+        "file": "backend/skills/calendar/handler.py",
+        "line": 17,
+        "severity": "non_blocking",
+        "description": "Unused imports: 'text' from sqlalchemy and 'Any, Dict, List, Optional' from typing are imported but never used in the module. Minor code hygiene issue."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The handoff from session f8e02774 (completedWorkerSessionId for skill-calendar) describes implementing backup_automation (commit 7bf5d52), not the calendar skill. The actual calendar implementation is in commit 3bc3074. The session-to-feature mapping in features.json appears incorrect — this could indicate the worker session was mistakenly assigned to the wrong feature, or the handoff was filed under the wrong feature ID.",
+      "evidence": "Handoff file 2026-03-14T06-34-30-892Z__skill-calendar__f8e02774.json says: 'Implemented backup_automation skill with 5 actions' and commitId: '7bf5d52'. But features.json has completedWorkerSessionId: f8e02774 for skill-calendar. Git log shows 3bc3074 = 'Implement calendar skill', 7bf5d52 = 'Implement backup_automation skill'."
+    },
+    {
+      "area": "skills",
+      "observation": "The SKILL.md for backend-worker prescribes a 'Write Tests FIRST (Red Phase)' procedure. Since the transcript for session f8e02774 shows backup_automation work (not calendar), it's impossible to verify whether the Red Phase was followed for the calendar implementation. The commit (3bc3074) bundles tests and implementation together, which is common but doesn't prove TDD order.",
+      "evidence": "Transcript skeleton for f8e02774 shows mkdir backup_automation, creating backup_automation files. Commit 3bc3074 adds both handler.py and test_calendar.py simultaneously."
+    },
+    {
+      "area": "conventions",
+      "observation": "The calendar handler has unused imports (text from sqlalchemy, Any/Dict/List/Optional from typing). AGENTS.md doesn't have a lint/import hygiene rule for the backend. Consider adding a convention about running a linter or import checker.",
+      "evidence": "backend/skills/calendar/handler.py line 17: 'from sqlalchemy import text, select, desc, and_' — 'text' is never used. Line 18: 'from typing import Any, Dict, List, Optional' — none are used."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The calendar skill implementation (commit 3bc3074) fully satisfies the feature requirements. All 6 actions are implemented with proper validation, async DB operations, error handling, and 38 comprehensive tests. The manifest correctly declares productivity category with no permissions. Database models have appropriate indexes. Four non-blocking issues noted: silent handling of invalid reminders and date filters, no FK constraint on task_id (consistent with project pattern), and unused imports. The main process concern is a handoff/session mismatch — session f8e02774's handoff describes backup_automation work, not calendar — but the actual code deliverable is correct."
+}

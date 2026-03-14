@@ -1,0 +1,62 @@
+{
+  "featureId": "skill-email-marketing",
+  "reviewedAt": "2026-03-14T08:30:00Z",
+  "commitId": "678b0cc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The email_marketing skill implementation is solid and meets all feature requirements. It provides 4 actions (create_campaign, send_campaign, list_campaigns, audience_segment), stores campaigns in the email_campaigns table with proper SQLAlchemy models, supports LLM-generated email copy via Brain engine, uses Celery for async SMTP delivery, and supports {{name}}/{{company}} template variables. All 37 tests pass. CRITICAL PROCESS NOTE: The handoff from completed worker session cf38c2ba references commit ae13dcf which is a social_media skill — the worker built the WRONG skill. The actual email_marketing implementation exists at commit 678b0cc (attributed to worker d2ed2e21 under feature skill-market-intelligence). Despite this cross-contamination, the email_marketing code on disk is functionally correct and well-tested.",
+    "issues": [
+      {
+        "file": "backend/skills/email_marketing/handler.py",
+        "line": 246,
+        "severity": "non_blocking",
+        "description": "The _deliver_campaign method uses synchronous smtplib.SMTP inside an async method, which blocks the event loop during SMTP operations. Should use aiosmtplib or run_in_executor(). Mitigated by the fact that this is primarily called from Celery (sync context), but the inline fallback in send_campaign could block the async API."
+      },
+      {
+        "file": "backend/skills/email_marketing/handler.py",
+        "line": 257,
+        "severity": "non_blocking",
+        "description": "_deliver_campaign sends to settings.alert_recipient_list instead of resolving actual segment members. Code has a comment acknowledging this limitation ('In a full implementation, recipients would come from the segment'). The feature description says 'send_campaign (queue emails for delivery via existing SMTP config)' — technically met, but segment-based recipient resolution is incomplete."
+      },
+      {
+        "file": "backend/core/database.py",
+        "line": 787,
+        "severity": "non_blocking",
+        "description": "segment_id in EmailCampaign is declared as Column(Integer, nullable=True) with a comment saying '# FK to audience_segments' but no actual ForeignKey() constraint is defined. This means there's no referential integrity at the database level — a campaign could reference a non-existent segment ID."
+      },
+      {
+        "file": "backend/skills/email_marketing/handler.py",
+        "line": 277,
+        "severity": "non_blocking",
+        "description": "Recipient name is derived from email address (recipient.split('@')[0]) which is a rough approximation. In a real campaign this would produce names like 'john.doe' or 'support' rather than actual contact names."
+      },
+      {
+        "file": "backend/skills/email_marketing/handler.py",
+        "line": 296,
+        "severity": "non_blocking",
+        "description": "HTML email body uses body.replace(chr(10), '<br>') without HTML-escaping the body content first. If the body_template contains HTML special characters (or malicious HTML from an LLM response), they would be rendered as-is. Low risk since templates are admin-controlled, but worth noting."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker session cf38c2ba implemented a social_media skill (commit ae13dcf) instead of the assigned email_marketing skill. The actual email_marketing code was committed in 678b0cc under a different worker session (d2ed2e21, assigned to skill-market-intelligence). This cross-contamination between worker sessions suggests workers may not be properly scoping their work to their assigned feature ID.",
+      "evidence": "Handoff for cf38c2ba references commitId ae13dcf (social_media). Git log shows 678b0cc (email_marketing) was committed by worker d2ed2e21 whose handoff file is 2026-03-14T06-10-59-344Z__skill-market-intelligence__d2ed2e21-c3ee-4dff-8fad-f2559f600879.json with commitId 678b0cc."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill procedure says 'Write Tests FIRST (Red Phase)' but the transcript shows the worker created manifest.yaml and handler.py first, then tests. The skill procedure's TDD approach was not followed.",
+      "evidence": "Transcript skeleton shows worker created manifest.yaml, then handler.py, then test file — tests were written AFTER implementation, not before."
+    },
+    {
+      "area": "conventions",
+      "observation": "The Celery task send_email_campaign in core/tasks.py was added, which is consistent with the project's existing pattern for async tasks. No documentation gap here — just noting it follows convention properly.",
+      "evidence": "backend/core/tasks.py lines 640-667: send_email_campaign task follows the same _run_async pattern as other tasks in the file."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The email_marketing skill implementation PASSES review — all 4 required actions work correctly, 37 tests pass, DB models are properly defined, LLM integration works, and Celery async delivery is implemented. However, there is a significant PROCESS issue: the completed worker session (cf38c2ba) actually built a social_media skill (commit ae13dcf), not email_marketing. The correct email_marketing code (commit 678b0cc) was committed by a different worker session (d2ed2e21). Non-blocking code issues include: sync SMTP in async context, incomplete segment-to-recipients resolution, missing ForeignKey constraint on segment_id, and unescaped HTML in email body rendering."
+}
