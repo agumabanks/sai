@@ -1,10 +1,13 @@
 """
-Sanaa AI — Workflow routes: list, run, status, resume, cancel.
+Sanaa AI — Workflow routes: list, run, status, resume, cancel, create.
 """
 
 import logging
+import os
+import re
 
-from fastapi import APIRouter, HTTPException, Depends
+import yaml
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 
@@ -54,6 +57,70 @@ async def list_workflows_api(user: dict = Depends(require_auth)):
             for w in workflows
         ],
     }
+
+
+@router.post("/api/workflows")
+async def create_workflow_api(request: Request, user: dict = Depends(require_auth)):
+    """Create or update a workflow from YAML content.
+
+    Accepts raw YAML body (Content-Type: application/x-yaml or text/plain).
+    Validates the YAML, writes it to the workflows directory, and re-discovers.
+    """
+    body_bytes = await request.body()
+    yaml_content = body_bytes.decode("utf-8", errors="replace").strip()
+
+    if not yaml_content:
+        raise HTTPException(400, "Empty YAML body")
+
+    # Parse and validate
+    try:
+        parsed = yaml.safe_load(yaml_content)
+    except yaml.YAMLError as e:
+        raise HTTPException(400, f"Invalid YAML: {e}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(400, "YAML must be a mapping (dict)")
+
+    name = parsed.get("name")
+    if not name or not isinstance(name, str):
+        raise HTTPException(400, "Workflow YAML must contain a 'name' field")
+
+    # Sanitise name for filesystem safety
+    safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", name.strip())
+    if not safe_name:
+        raise HTTPException(400, "Invalid workflow name")
+
+    # Must have steps
+    steps = parsed.get("steps")
+    if not steps or not isinstance(steps, list):
+        raise HTTPException(400, "Workflow must have at least one step")
+
+    # Validate via the loader (catches schema issues)
+    try:
+        deps.workflow_loader._parse_definition(parsed, f"{safe_name}.yaml")
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, f"Workflow validation failed: {e}")
+
+    # Write to workflows directory
+    workflows_dir = deps.workflow_loader.workflows_dir
+    filepath = os.path.join(workflows_dir, f"{safe_name}.yaml")
+    with open(filepath, "w") as f:
+        f.write(yaml_content)
+
+    logger.info(f"Workflow saved: {safe_name} -> {filepath}")
+
+    try:
+        await AuditLog.log(
+            actor=user.get("email", "admin"),
+            action="workflow.create",
+            resource=safe_name,
+            details={"path": filepath, "step_count": len(steps)},
+            success=True,
+        )
+    except Exception:
+        pass
+
+    return {"status": "saved", "name": safe_name, "path": filepath, "step_count": len(steps)}
 
 
 @router.post("/api/workflows/{workflow_name}/run")
