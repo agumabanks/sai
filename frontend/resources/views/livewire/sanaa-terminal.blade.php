@@ -1,30 +1,26 @@
 <div
     x-data="sanaaTerminal(@js($commandHistory), @js($skillSuggestions))"
     x-init="init()"
-    class="glass-dark rounded-[2rem] p-6 shadow-2xl h-[620px] flex flex-col relative overflow-hidden group"
-    @if($pendingCommandId) wire:poll.3s="pollCommand" @endif
+    class="sanaa-chat-shell glass-dark rounded-2xl p-3 sm:p-4 lg:p-5 shadow-xl flex flex-col relative overflow-hidden group"
+    @if($pendingCommandId) wire:poll.2s="pollCommand" @endif
 >
-    {{-- Decorative Background Gradients --}}
-    <div class="absolute -top-32 -left-32 w-64 h-64 bg-sanaa-indigo/5 blur-[80px] rounded-full pointer-events-none"></div>
-    <div class="absolute -bottom-32 -right-32 w-64 h-64 bg-sanaa-cyan/5 blur-[80px] rounded-full pointer-events-none"></div>
-
     {{-- Chat Header --}}
-    <div class="flex items-center justify-between mb-5 pb-4 border-b border-white/[0.05] relative z-10">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3 sm:mb-4 pb-3 border-b border-white/[0.05] relative z-10">
         <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-sanaa-indigo/10 flex items-center justify-center border border-sanaa-indigo/20">
+            <div class="w-9 h-9 rounded-xl bg-sanaa-indigo/10 flex shrink-0 items-center justify-center border border-sanaa-indigo/20">
                 <x-heroicon-m-sparkles class="w-4 h-4 text-sanaa-indigo"/>
             </div>
             <div>
-                <h3 class="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-0.5">Sanaa Neural Link</h3>
+                <h3 class="text-[10px] font-black text-white/35 uppercase tracking-[0.18em] mb-0.5">Sanaa Chat</h3>
                 <div class="flex items-center gap-1.5">
                     <div class="w-1 h-1 rounded-full bg-sanaa-emerald animate-pulse"></div>
-                    <span class="text-[9px] font-bold text-white/50 uppercase tracking-widest">Groq + Local ML</span>
+                    <span class="text-[9px] font-bold text-white/55 uppercase tracking-widest">Groq only</span>
                 </div>
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <div class="px-2.5 py-1 rounded-full glass text-[9px] font-bold text-white/30 uppercase tracking-tight">
-                Bridge: Stable
+            <div class="px-2.5 py-1 rounded-full glass text-[9px] font-bold text-white/35 uppercase tracking-tight">
+                Groq bridge
             </div>
             @if(!empty($history))
                 <button
@@ -39,10 +35,10 @@
     </div>
 
     {{-- Chat History --}}
-    <div class="flex-1 overflow-y-auto mb-5 space-y-5 pr-1 relative z-10 chat-scroll" id="terminal-history">
-        <div class="flex flex-col items-center py-6 text-center opacity-30">
-            <div class="w-px h-10 bg-gradient-to-b from-transparent via-white/10 to-white/10 mb-3"></div>
-            <p class="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">Communication Initialized</p>
+    <div class="flex-1 overflow-y-auto mb-3 sm:mb-4 space-y-3 sm:space-y-4 pr-1 relative z-10 chat-scroll" id="terminal-history">
+        <div class="flex flex-col items-center py-5 sm:py-6 text-center opacity-30">
+            <div class="w-px h-8 sm:h-10 bg-gradient-to-b from-transparent via-white/10 to-white/10 mb-3"></div>
+            <p class="text-[9px] font-black text-white/40 uppercase tracking-[0.22em]">Ready</p>
         </div>
 
         @foreach($history as $index => $entry)
@@ -50,17 +46,17 @@
                 class="flex {{ $entry['type'] === 'user' ? 'justify-end' : 'justify-start' }} animate-in fade-in slide-in-from-bottom-2 duration-400"
                 style="animation-delay: {{ min($index * 40, 200) }}ms"
             >
-                <div class="max-w-[85%] relative group/msg">
+                <div class="{{ $entry['type'] === 'user' ? 'max-w-[86%] sm:max-w-[72%] lg:max-w-[58%]' : 'max-w-[94%] sm:max-w-[88%] lg:max-w-[72%]' }} relative group/msg">
                     <div class="flex flex-col {{ $entry['type'] === 'user' ? 'items-end' : 'items-start' }} gap-1 mb-1">
                         <span class="text-[9px] font-black tracking-widest uppercase {{ $entry['type'] === 'user' ? 'text-white/25' : 'text-sanaa-indigo/70' }}">
                             {{ $entry['type'] === 'user' ? 'YOU' : 'SANAA AI' }}
                         </span>
                     </div>
 
-                    <div class="rounded-3xl px-5 py-3 shadow-xl transition-all duration-200
+                    <div class="rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 shadow-sm transition-all duration-200
                         {{ $entry['type'] === 'user'
                             ? 'bg-gradient-to-br from-sanaa-indigo to-sanaa-purple text-white rounded-tr-none'
-                            : 'glass-dark border border-white/[0.07] text-white/75 rounded-tl-none hover:border-sanaa-indigo/25' }}">
+                            : 'sanaa-assistant-bubble glass-dark border border-white/[0.07] text-white/80 rounded-tl-none hover:border-sanaa-indigo/25' }}">
 
                         <div class="terminal-content prose prose-invert prose-xs max-w-none prose-p:leading-relaxed prose-pre:bg-black/40 prose-pre:border prose-pre:border-white/5">
                             {!! str($entry['text'])->markdown() !!}
@@ -79,7 +75,7 @@
         {{-- Loading indicator --}}
         @if($isLoading)
             <div class="flex justify-start">
-                <div class="glass-dark border border-white/[0.07] rounded-3xl rounded-tl-none px-5 py-3">
+                <div class="glass-dark border border-white/[0.07] rounded-2xl rounded-tl-none px-4 py-3">
                     <div class="flex items-center gap-1.5">
                         <span class="w-1.5 h-1.5 rounded-full bg-sanaa-indigo/60 animate-bounce" style="animation-delay:0ms"></span>
                         <span class="w-1.5 h-1.5 rounded-full bg-sanaa-indigo/60 animate-bounce" style="animation-delay:120ms"></span>
@@ -94,7 +90,7 @@
     <div class="relative z-10">
         {{-- Skill Suggestions Dropdown --}}
         <template x-if="showSuggestions && filteredSuggestions.length > 0">
-            <div class="absolute bottom-full left-0 right-0 mb-2 glass-dark border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-48 overflow-y-auto chat-scroll z-50">
+            <div class="absolute bottom-full left-0 right-0 mb-2 glass-dark border border-white/10 rounded-xl overflow-hidden shadow-xl max-h-48 overflow-y-auto chat-scroll z-50">
                 <template x-for="(suggestion, idx) in filteredSuggestions" :key="suggestion.name">
                     <button
                         type="button"
@@ -114,8 +110,6 @@
         </template>
 
         <form wire:submit.prevent="send" @submit="onSubmit" class="relative group/input">
-            <div class="absolute inset-0 bg-sanaa-indigo/5 rounded-[1.5rem] blur-xl group-focus-within/input:bg-sanaa-indigo/10 transition-all duration-500"></div>
-
             <input
                 type="text"
                 wire:model="command"
@@ -126,8 +120,8 @@
                 @keydown.tab.prevent="acceptSuggestion()"
                 @input.debounce.150ms="onInputChange($event.target.value)"
                 @if($isLoading) disabled @endif
-                class="relative w-full glass bg-white/5 border border-white/10 rounded-[1.5rem] pl-5 pr-14 py-3.5 text-[13px] text-white placeholder-white/20 focus:outline-none focus:ring-0 focus:ring-transparent focus:border-sanaa-indigo/50 transition-all shadow-2xl @if($isLoading) opacity-60 @endif"
-                placeholder="@if($isLoading) Processing... @else Type a command or ask anything... try 'help' @endif"
+                class="relative w-full glass bg-white/5 border border-white/10 rounded-xl pl-4 sm:pl-5 pr-12 sm:pr-14 py-3 sm:py-3.5 text-[13px] text-white placeholder-white/25 focus:outline-none focus:ring-0 focus:ring-transparent focus:border-sanaa-indigo/50 transition-all shadow-sm @if($isLoading) opacity-60 @endif"
+                placeholder="@if($isLoading) Processing... @else Message Sanaa AI @endif"
                 autofocus
                 autocomplete="off"
             >
@@ -135,7 +129,7 @@
             <button
                 type="submit"
                 @if($isLoading) disabled @endif
-                class="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-sanaa-indigo flex items-center justify-center text-white shadow-lg shadow-sanaa-indigo/20 hover:scale-105 hover:bg-sanaa-purple transition-all active:scale-95 group/btn @if($isLoading) opacity-40 cursor-not-allowed @endif"
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-sanaa-indigo flex items-center justify-center text-white shadow-lg shadow-sanaa-indigo/20 hover:bg-sanaa-purple transition-all active:scale-95 group/btn @if($isLoading) opacity-40 cursor-not-allowed @endif"
             >
                 @if($isLoading)
                     <x-heroicon-m-arrow-path class="w-4 h-4 animate-spin"/>

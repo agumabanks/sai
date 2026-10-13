@@ -1,0 +1,13 @@
+name: skill_tester
+version: "1.0.0"
+description: Automatically runs predefined test_cases from skill manifests to ensure ecosystem stability.
+permissions: [shell, network, filesystem]
+requires_approval: false
+timeout: 300
+tags: [testing, validation, self-improving]
+handler: handler
+parameters:
+  - name: target_skill
+    type: string
+    description: "The name of a specific skill to test. If omitted, tests all skills with defined test_cases."
+    required: false

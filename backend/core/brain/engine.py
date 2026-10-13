@@ -7,6 +7,7 @@ import re
 import logging
 import asyncio
 import time
+import shlex
 from typing import Optional
 from litellm import acompletion
 
@@ -15,9 +16,97 @@ from core.database import Command, Log, AuditLog
 from core.brain.providers import ModelRegistry, TIERS
 from core.brain.usage import track_usage
 from core.policies import evaluate_skill_access, effective_brain_provider_name
+from core.utils.sandbox import ExecutionSandbox
+from core.utils.sanitize import sanitize_command_string
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Strict allowlist for commands the Brain may auto-execute. Anything outside
+# this list requires explicit human approval through the approvals system.
+BRAIN_ALLOWED_COMMANDS = {
+    "echo",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "less",
+    "more",
+    "wc",
+    "sort",
+    "uniq",
+    "grep",
+    "rg",
+    "find",
+    "which",
+    "whereis",
+    "file",
+    "stat",
+    "pwd",
+    "date",
+    "cal",
+    "hostname",
+    "id",
+    "groups",
+    "whoami",
+    "uname",
+    "uptime",
+    "free",
+    "df",
+    "du",
+    "ps",
+    "top",
+    "htop",
+    "ss",
+    "netstat",
+    "ip",
+    "ifconfig",
+    "ping",
+    "curl",
+    "wget",
+    "dig",
+    "nslookup",
+    "host",
+    "systemctl",
+    "service",
+    "journalctl",
+    "git",
+    "python",
+    "python3",
+    "php",
+    "node",
+    "npm",
+    "npx",
+    "docker",
+    "docker-compose",
+    "kubectl",
+    "helm",
+    "tar",
+    "gzip",
+    "gunzip",
+    "zip",
+    "unzip",
+    "mkdir",
+    "touch",
+    "cp",
+    "mv",
+    "chmod",
+    "chown",
+    "sed",
+    "awk",
+    "jq",
+    "yq",
+    "mysql",
+    "mariadb",
+    "psql",
+    "redis-cli",
+    "sqlite3",
+    "nginx",
+    "openssl",
+    "tree",
+    "lsof",
+    "lsb_release",
+}
 
 class Brain:
     def __init__(self):
@@ -74,6 +163,7 @@ class Brain:
         channel: str = "web",
         sender_id: str = "",
         execution_mode: str = "manual",
+        sender_role: str = "",
     ) -> dict:
         """Execute a skill by name through the registry.
 
@@ -95,6 +185,7 @@ class Brain:
             invocation=execution_mode,
             provider=self.get_effective_tool_provider(),
             channel=channel or "web",
+            sender_role=sender_role,
         )
         if not access.get("allowed"):
             reason = access.get("reason") or "Skill blocked by policy"
@@ -128,104 +219,14 @@ class Brain:
             brain=self,
             memory=self.memory,
         )
-
-        _start = time.time()
         result = await self.skill_registry.execute(name, args, context)
-        _elapsed_ms = int((time.time() - _start) * 1000)
-
-        # Track for learned shortcuts
-        if result.success and execution_mode == "brain":
-            await self._record_skill_invocation_for_shortcuts(name, args, session_id)
-
-        # Record execution in skill_runs for ML analysis
-        await self._record_skill_run(
-            skill_name=name,
-            args=args,
-            result=result,
-            elapsed_ms=_elapsed_ms,
-            session_id=session_id,
-            execution_mode=execution_mode,
-        )
-
-        # Log skill errors to learning system for self-improvement
-        if not result.success and result.error:
-            try:
-                from core.intelligence.learning_logs import learning_log_manager
-                await learning_log_manager.log_skill_error(
-                    skill_name=name,
-                    action=args.get("action", ""),
-                    error=result.error,
-                    args=args,
-                    session_id=session_id,
-                )
-            except Exception:
-                pass
-
         return {
             "success": result.success,
             "output": result.output,
             "error": result.error,
             "data": result.data,
-            "execution_time_ms": _elapsed_ms or result.execution_time_ms,
+            "execution_time_ms": result.execution_time_ms,
         }
-
-    async def _record_skill_invocation_for_shortcuts(self, name: str, args: dict, session_id: str):
-        """Record skill usage to optionally auto-suggest shortcuts for repetitive tasks."""
-        try:
-            from core.database import SystemKnowledge
-            from sqlalchemy.dialects.postgresql import insert
-            
-            # Use the skill name and sorted argument keys as a signature
-            arg_signature = ",".join(sorted(args.keys()))
-            signature = f"{name}({arg_signature})"
-            
-            key = f"shortcut_tracker.{signature}"
-            current_count_str = await SystemKnowledge.get_pref(key, default="0", domain="behavior")
-            count = int(current_count_str) + 1
-            
-            # Simple heuristic: If we do the exact same shape 5 times, it might be a shortcut
-            if count == 5:
-                suggestion = (
-                    f"💡 I noticed you frequently use the `{name}` skill with arguments {list(args.keys())}. "
-                    f"Would you like me to create a shortcut or alias for this?"
-                )
-                # Store the suggestion in the context buffer so the brain can mention it
-                # For now, just log it. A fuller implementation would inject this into ContextAssembler.
-                logger.info(f"Learned Shortcut Suggestion: {suggestion}")
-            
-            await SystemKnowledge.set_pref(key, str(count), source="brain", domain="behavior")
-        except Exception as e:
-            logger.warning(f"Failed to record shortcut logic: {e}")
-
-    async def _record_skill_run(
-        self,
-        skill_name: str,
-        args: dict,
-        result,
-        elapsed_ms: int,
-        session_id: str,
-        execution_mode: str,
-    ):
-        """Record skill execution to skill_runs table for ML analysis."""
-        try:
-            from core.database import SkillRun, utcnow
-            status = "success" if result.success else "failed"
-            if result.error and "timeout" in result.error.lower():
-                status = "timeout"
-
-            await SkillRun.create(
-                skill_name=skill_name,
-                action=args.get("action", ""),
-                triggered_by=execution_mode,
-                input_data=args,
-                output_data={"output": result.output[:500] if result.output else "", "data": result.data},
-                status=status,
-                error_message=result.error if not result.success else None,
-                duration_ms=elapsed_ms,
-                completed_at=utcnow(),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record skill run for ML: {e}")
 
     def get_effective_tool_provider(self) -> str:
         return effective_brain_provider_name(
@@ -272,6 +273,8 @@ class Brain:
         complexity: str = "auto",
         session_id: str = None,
         channel: str = "web",
+        sender_id: str = "",
+        sender_role: str = "",
     ) -> str:
         """
         Route to appropriate model tier based on task complexity.
@@ -285,13 +288,16 @@ class Brain:
                 prompt, session_id=session_id, channel=channel
             )
         else:
+            # Simple system prompt if no memory context
             messages = [
-                {"role": "system", "content": "You are Sanaa AI, an autonomous intelligence assistant. Be concise, helpful, and conversational."},
+                {"role": "system", "content": "You are the central brain of Sanaa AI."},
                 {"role": "user", "content": prompt},
             ]
 
         # Allow a lightweight skill-tool loop for operational prompts.
-        messages = await self._maybe_invoke_skills(messages, prompt, tier, session_id, channel)
+        messages = await self._maybe_invoke_skills(
+            messages, prompt, tier, session_id, channel, sender_id=sender_id, sender_role=sender_role
+        )
 
         # Try models with failover: tier N → N-1 → ... → 1
         response_text = await self._call_with_failover(messages, tier)
@@ -315,9 +321,11 @@ class Brain:
         tier: int,
         session_id: Optional[str],
         channel: str,
+        sender_id: str = "",
+        sender_role: str = "",
     ) -> list[dict]:
         """One-shot or multi-shot tool loop using JSON tool directives in model output."""
-        if not self._should_offer_skills(original_prompt, channel):
+        if not self._should_offer_skills(original_prompt, channel, sender_role=sender_role):
             return messages
 
         await self.ensure_skills_loaded()
@@ -325,15 +333,22 @@ class Brain:
             return messages
 
         provider = self.get_effective_tool_provider()
-        
-        # Allow up to 3 tool calls to chain diagnostics
-        for loop_idx in range(3):
+        admin_actor = str(sender_role or "").lower() == "admin"
+        max_loops = 6 if admin_actor else 3
+
+        for loop_idx in range(max_loops):
             visible_skills = []
             visible_tool_defs = []
             visible_names: set[str] = set()
             
             for skill in self.skill_registry._skills.values():
-                access = await evaluate_skill_access(skill=skill, invocation="brain", provider=provider, channel=channel or "web")
+                access = await evaluate_skill_access(
+                    skill=skill,
+                    invocation="brain",
+                    provider=provider,
+                    channel=channel or "web",
+                    sender_role=sender_role,
+                )
                 if access.get("allowed"):
                     visible_names.add(skill.name)
                     visible_skills.append({
@@ -347,7 +362,7 @@ class Brain:
                 break
 
             tool_prompt = (
-                f"Iteration {loop_idx + 1}/3. You can request ONE skill call if needed for accuracy.\n"
+                f"Iteration {loop_idx + 1}/{max_loops}. You can request ONE skill call if needed for accuracy.\n"
                 "If you need a skill, reply ONLY JSON:\n"
                 '{"tool":"name","args":{"param":"value"},"reason":"why"}\n'
                 "If no (more) skills are needed, reply 'READY'.\n\n"
@@ -373,7 +388,7 @@ class Brain:
                 args=skill_args,
                 session_id=session_id or "",
                 channel=channel or "web",
-                sender_id="brain",
+                sender_id=sender_id or "brain",
                 execution_mode="brain",
             )
 
@@ -399,12 +414,7 @@ class Brain:
                 flat_prompt = self._flatten_messages_for_clade(messages)
                 result = await self.sanaa_clade.ask(flat_prompt)
                 if result.success and result.output:
-                    output = result.output
-                    # Strip provider error JSON that leaks from the CLI
-                    import re as _re
-                    output = _re.sub(r'\{\s*"type"\s*:\s*"error".*?"request_id"\s*:\s*"[^"]*"\s*\}\s*', '', output, flags=_re.DOTALL).strip()
-                    if output:
-                        return output
+                    return result.output
                 logger.warning(f"sanaa-clade bridge failed, falling back to LiteLLM: {result.stderr}")
             except Exception as e:
                 logger.warning(f"sanaa-clade bridge exception, falling back to LiteLLM: {e}")
@@ -414,8 +424,24 @@ class Brain:
             models = self.registry.get_models_for_tier(tier)
             for model in models:
                 try:
-                    # Ollama on CPU needs more time; cloud APIs are fast
-                    model_timeout = 90 if model.startswith("ollama/") else 30
+                    # Timeout: Ollama CPU is slowest; Salad GPU soldier is fast; cloud APIs are fast
+                    if model.startswith("ollama/"):
+                        model_timeout = 90
+                    elif self.registry.is_soldier_model(model):
+                        model_timeout = 60   # GPU-hosted 35B — generous but bounded
+                    else:
+                        model_timeout = 30
+
+                    # Build extra kwargs for non-standard endpoints
+                    extra: dict = {}
+                    if self.registry.is_soldier_model(model) and settings.soldier_url:
+                        extra["api_base"] = settings.soldier_url
+                        extra["api_key"] = settings.soldier_api_key
+                        # Qwen3.5-35B has thinking-mode enabled by default.
+                        # Without this flag every token goes to reasoning_content
+                        # and content is empty — we only need the final answer.
+                        extra["extra_body"] = {"enable_thinking": False}
+
                     start = time.monotonic()
                     response = await acompletion(
                         model=model,
@@ -423,6 +449,7 @@ class Brain:
                         max_tokens=tier_config["max_tokens"],
                         temperature=0.3,
                         timeout=model_timeout,
+                        **extra,
                     )
                     latency = int((time.monotonic() - start) * 1000)
                     content = response.choices[0].message.content
@@ -451,7 +478,7 @@ class Brain:
 
     def _flatten_messages_for_clade(self, messages: list[dict]) -> str:
         """Flatten chat messages into a single prompt for the CLI wrapper."""
-        parts = ["You are Sanaa AI, an autonomous intelligence assistant. Be concise, helpful, and conversational."]
+        parts = ["You are the central brain of Sanaa AI. Respond with practical, accurate operational guidance."]
         for msg in messages:
             role = (msg.get("role") or "user").upper()
             content = msg.get("content", "")
@@ -464,7 +491,9 @@ class Brain:
             parts.append(f"{role}: {content}")
         return "\n\n".join(parts)
 
-    def _should_offer_skills(self, prompt: str, channel: str) -> bool:
+    def _should_offer_skills(self, prompt: str, channel: str, sender_role: str = "") -> bool:
+        if str(sender_role or "").lower() == "admin":
+            return bool(prompt and len(prompt) <= 8000)
         if not prompt:
             return False
         if len(prompt) > 3000:
@@ -687,15 +716,17 @@ Respond ONLY in JSON with:
             }
 
     async def execute_plan(self, cmd_id: str, plan: list[str]):
-        """Execute an approved plan step by step.
+        """Execute an approved plan step by step using a sandboxed subprocess.
 
-        Security: Uses subprocess with shell=False and argument lists to
-        prevent shell injection. Commands are parsed via shlex.split() and
-        validated for dangerous metacharacters before execution.
+        Each plan step is translated into a bash command by the LLM, then
+        validated against a strict allowlist and run with ``shell=False`` via
+        :class:`ExecutionSandbox`. Commands that contain shell injection
+        patterns are blocked. Commands that are not in the allowlist are
+        rejected and an approval request is created so a human can explicitly
+        authorize them.
         """
-        from core.utils.sanitize import sanitize_command_string
-
         results = []
+        sandbox = ExecutionSandbox(timeout=60, memory_limit_mb=128)
 
         for step in plan:
             try:
@@ -712,32 +743,67 @@ Respond ONLY in JSON with:
                     results.append({"step": step, "status": "skipped", "reason": actual_cmd})
                     continue
 
-                # Sanitize and split command into argument list (shell=False)
+                # Parse and validate: rejects shell metacharacters and injection
+                # patterns so the command is safe for shell=False execution.
                 try:
-                    cmd_args = sanitize_command_string(actual_cmd)
-                except ValueError as e:
+                    args = sanitize_command_string(actual_cmd)
+                except ValueError as exc:
                     results.append({
                         "step": step,
                         "command": actual_cmd,
                         "status": "blocked",
-                        "error": f"Command blocked by sanitizer: {e}",
+                        "error": f"Blocked by sanitizer: {exc}",
                     })
-                    logger.warning(f"Brain: blocked unsafe command: {actual_cmd!r}")
+                    await AuditLog.log(
+                        actor="brain",
+                        action="command.execute_blocked",
+                        resource=actual_cmd[:200],
+                        details={"cmd_id": cmd_id, "step": step, "reason": str(exc)},
+                        success=False,
+                    )
                     continue
 
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd_args,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+                # Strict allowlist: anything outside it requires explicit approval.
+                base = args[0]
+                if base not in BRAIN_ALLOWED_COMMANDS:
+                    from core.approvals.manager import manager as approval_manager
 
+                    approval = await approval_manager.request_approval(
+                        action="brain.execute_plan.unallowed_command",
+                        target=actual_cmd[:200],
+                        details={"cmd_id": cmd_id, "step": step, "parsed_args": args},
+                        channels=[],
+                    )
+                    results.append({
+                        "step": step,
+                        "command": actual_cmd,
+                        "status": "awaiting_approval",
+                        "approval_token": approval.token,
+                        "error": (
+                            f"Command '{base}' is not in the brain execution allowlist. "
+                            f"Approval requested (token {approval.token})."
+                        ),
+                    })
+                    await AuditLog.log(
+                        actor="brain",
+                        action="command.execute_unallowed",
+                        resource=actual_cmd[:200],
+                        details={
+                            "cmd_id": cmd_id,
+                            "step": step,
+                            "approval_token": approval.token,
+                        },
+                        success=False,
+                    )
+                    continue
+
+                proc_res = await sandbox.execute_command(args, timeout=60)
                 results.append({
                     "step": step,
                     "command": actual_cmd,
-                    "status": "success" if proc.returncode == 0 else "failed",
-                    "output": stdout.decode()[-500:] if stdout else "",
-                    "error": stderr.decode()[-500:] if stderr else "",
+                    "status": "success" if proc_res["success"] else "failed",
+                    "output": (proc_res.get("stdout") or "")[-500:],
+                    "error": (proc_res.get("stderr") or proc_res.get("error") or "")[-500:],
                 })
 
                 # Audit log
@@ -745,7 +811,8 @@ Respond ONLY in JSON with:
                     actor="brain",
                     action="command.execute_step",
                     resource=actual_cmd[:200],
-                    success=proc.returncode == 0,
+                    success=proc_res["success"],
+                    details={"cmd_id": cmd_id, "returncode": proc_res.get("returncode")},
                 )
 
             except asyncio.TimeoutError:

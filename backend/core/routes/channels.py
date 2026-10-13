@@ -213,7 +213,16 @@ async def wa_webhook_incoming(request: Request, background_tasks: BackgroundTask
         return JSONResponse(status_code=429, content={"status": "rate_limited"})
 
     webhook_token = request.headers.get("X-Webhook-Token") or request.query_params.get("verify_token")
-    if settings.whatsapp_webhook_secret and webhook_token != settings.whatsapp_webhook_secret:
+    if not settings.whatsapp_webhook_secret:
+        logger.warning(
+            f"WhatsApp webhook rejected: whatsapp_webhook_secret is not configured "
+            f"(source {request.client.host if request.client else 'unknown'})"
+        )
+        return JSONResponse(
+            status_code=403,
+            content={"status": "forbidden", "reason": "webhook secret not configured"},
+        )
+    if webhook_token != settings.whatsapp_webhook_secret:
         logger.warning(f"WhatsApp webhook: invalid token from {request.client.host if request.client else 'unknown'}")
         return JSONResponse(status_code=403, content={"status": "forbidden", "reason": "invalid webhook token"})
 

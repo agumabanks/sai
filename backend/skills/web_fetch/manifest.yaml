@@ -1,0 +1,15 @@
+name: web_fetch
+description: "Fetch, extract, and summarize content from any URL. Strips HTML and returns clean text for AI analysis."
+version: "1.0.0"
+category: "research"
+tags: ["url", "web", "browser", "summarize", "fetch", "jarvis"]
+parameters:
+  url:
+    type: string
+    description: "The URL to fetch and summarize"
+    required: true
+  mode:
+    type: string
+    description: "Mode: 'extract' for raw text, 'summarize' for AI summary"
+    required: false
+    enum: ["extract", "summarize"]

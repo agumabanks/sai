@@ -8,9 +8,9 @@ use Filament\Widgets\Widget;
 class SystemActivityWidget extends Widget
 {
     protected static string $view = 'filament.widgets.system-activity-widget';
-    
+
     protected static ?string $pollingInterval = '10s';
-    
+
     protected static bool $isLazy = false;
 
     public array $activities = [];
@@ -36,11 +36,13 @@ class SystemActivityWidget extends Widget
                 'status' => 'info',
                 'icon' => 'heroicon-m-clock',
             ]];
+
             return;
         }
 
         $this->activities = collect($raw)->map(function ($item) {
             $time = $item['time'] ?? '';
+
             return [
                 'type' => $item['type'] ?? 'system',
                 'title' => $item['title'] ?? 'System Event',
@@ -54,7 +56,7 @@ class SystemActivityWidget extends Widget
 
     public function getStatusColor(string $status): string
     {
-        return match($status) {
+        return match ($status) {
             'success' => 'emerald',
             'warning' => 'amber',
             'error' => 'red',

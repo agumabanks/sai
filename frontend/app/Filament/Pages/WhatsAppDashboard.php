@@ -3,8 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Services\WhatsAppService;
-use Filament\Pages\Page;
 use Filament\Notifications\Notification;
+use Filament\Pages\Page;
 
 class WhatsAppDashboard extends Page
 {
@@ -14,14 +14,20 @@ class WhatsAppDashboard extends Page
 
     protected static ?string $navigationGroup = 'Channels';
 
+    protected static ?string $navigationLabel = 'WhatsApp';
+
     protected static ?string $title = 'WhatsApp';
 
     protected static ?int $navigationSort = 10;
 
     public array $status = [];
+
     public array $contacts = [];
+
     public string $sendPhone = '';
+
     public string $sendMessage = '';
+
     public bool $showSendModal = false;
 
     public function mount()
@@ -62,6 +68,7 @@ class WhatsAppDashboard extends Page
                 ->body('Phone number and message are required.')
                 ->warning()
                 ->send();
+
             return;
         }
 

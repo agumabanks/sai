@@ -1,0 +1,26 @@
+name: web_automation
+version: "1.0.0"
+description: Automates a headless browser using Playwright. Can navigate, wait, click, fill forms, extract HTML, and take screenshots.
+permissions: [shell, network, filesystem]
+requires_approval: false
+timeout: 120
+tags: [web, automation, browser, scraping, research]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action to perform: extract_text, extract_html, screenshot"
+    required: true
+    enum: [extract_text, extract_html, screenshot]
+  - name: url
+    type: string
+    description: "The URL to navigate to."
+    required: true
+  - name: wait_for
+    type: string
+    description: "Optional CSS selector to wait for before extracting/screenshotting."
+    required: false
+  - name: timeout_sec
+    type: integer
+    description: "Page load timeout in seconds. Default 30."
+    required: false

@@ -8,12 +8,17 @@ use Filament\Pages\Page;
 
 class MarketingDashboard extends Page
 {
-    protected static ?string $navigationIcon    = 'heroicon-o-megaphone';
-    protected static ?string $navigationGroup   = 'Marketing';
-    protected static ?int    $navigationSort    = 1;
-    protected static string  $view              = 'filament.pages.marketing-dashboard';
-    protected static ?string $title             = 'Marketing Dashboard';
-    protected static ?string $navigationLabel   = 'Marketing Dashboard';
+    protected static ?string $navigationIcon = 'heroicon-o-megaphone';
+
+    protected static ?string $navigationGroup = 'Marketing';
+
+    protected static ?int $navigationSort = 1;
+
+    protected static string $view = 'filament.pages.marketing-dashboard';
+
+    protected static ?string $title = 'Marketing Dashboard';
+
+    protected static ?string $navigationLabel = 'Marketing Dashboard';
 
     // ── Page state ────────────────────────────────────────────────────────
 
@@ -219,12 +224,13 @@ class MarketingDashboard extends Page
      */
     public function formatScheduledTime(?string $timestamp): string
     {
-        if (!$timestamp) {
+        if (! $timestamp) {
             return 'Not set';
         }
 
         try {
             $dt = new \DateTime($timestamp);
+
             return $dt->format('M j, Y g:ia');
         } catch (\Exception $e) {
             return $timestamp;

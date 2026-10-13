@@ -1,0 +1,56 @@
+name: soko_agent
+version: "1.1.0"
+description: Monitors and manages the Soko eCommerce platform - orders, sellers, products, pulse, and ops actions.
+permissions: [network, db]
+requires_approval: false
+timeout: 60
+tags: [ecommerce, soko, monitoring, operations]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Soko action to run"
+    required: true
+    enum:
+      - order_metrics
+      - distressed_sellers
+      - platform_health
+      - recent_orders
+      - list_sellers
+      - product_queue
+      - admin_alerts
+      - dashboard
+      - list_customers
+      - platform_surfaces
+      - pulse
+      - verify_seller
+      - approve_product
+  - name: limit
+    type: integer
+    description: "Limit results"
+    required: false
+    default: 20
+  - name: seller_id
+    type: integer
+    description: "Seller ID for verify_seller"
+    required: false
+  - name: product_id
+    type: integer
+    description: "Product ID for approve_product"
+    required: false
+  - name: search
+    type: string
+    description: "Search filter"
+    required: false
+  - name: verification
+    type: integer
+    description: "Seller verification filter (0 or 1)"
+    required: false
+  - name: payment_status
+    type: string
+    description: "Order payment filter"
+    required: false
+  - name: delivery_status
+    type: string
+    description: "Order delivery filter"
+    required: false

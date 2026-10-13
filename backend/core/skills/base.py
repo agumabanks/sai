@@ -85,6 +85,8 @@ class BaseSkill(ABC):
     version: str = "1.0.0"
     permissions: list[str] = []          # e.g. ["shell", "network", "filesystem"]
     parameters: list[SkillParameter] = []
+    dependencies: list[str] = []         # Required other skills
+    test_cases: list[dict] = []          # Automated tests
     requires_approval: bool = False
     timeout: int = 30                    # seconds
     tags: list[str] = []                 # for categorization

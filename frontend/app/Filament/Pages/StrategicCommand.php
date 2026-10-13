@@ -2,20 +2,24 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Pages\Page;
 use App\Services\SanaaEngineService;
 use Filament\Actions\Action;
+use Filament\Pages\Page;
 
 class StrategicCommand extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-line';
+
     protected static ?string $navigationGroup = 'Intelligence';
-    protected static ?int $navigationSort = 2;
+
+    protected static ?int $navigationSort = 1;
+
     protected static string $view = 'filament.pages.strategic-command';
 
     protected static ?string $title = 'Strategic Command Center';
 
     public array $signals = [];
+
     public bool $loading = true;
 
     public function mount(): void
@@ -32,18 +36,18 @@ class StrategicCommand extends Page
 
     public function getSignalColor(string $classification): string
     {
-        return match(strtolower($classification)) {
-            'opportunity' => 'emerald',
-            'threat' => 'red',
-            'policy' => 'blue',
-            'market' => 'amber',
+        return match (strtolower($classification)) {
+            'opportunity' => 'success',
+            'threat' => 'danger',
+            'policy' => 'info',
+            'market' => 'warning',
             default => 'gray',
         };
     }
 
     public function getSignalIcon(string $classification): string
     {
-        return match(strtolower($classification)) {
+        return match (strtolower($classification)) {
             'opportunity' => 'heroicon-m-sparkles',
             'threat' => 'heroicon-m-exclamation-triangle',
             'policy' => 'heroicon-m-document-text',
@@ -64,9 +68,9 @@ class StrategicCommand extends Page
                 ->icon('heroicon-m-magnifying-glass')
                 ->color('info')
                 ->requiresConfirmation()
-                ->action(function() {
+                ->action(function () {
                     $engine = app(SanaaEngineService::class);
-                    $engine->executeCommand("run daily briefing");
+                    $engine->executeCommand('run daily briefing');
                     $this->refreshSignals();
                 }),
         ];

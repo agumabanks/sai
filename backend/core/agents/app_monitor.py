@@ -40,7 +40,8 @@ class AppMonitorAgent:
         self.memory = IntelligenceMemory()
         self.log_pattern = "/var/www/*/storage/logs/laravel.log"
         self.known_errors_file = "/opt/antigravity/data/known_errors.json"
-        
+        self.repair_script_path = "/usr/local/sbin/repair_finance_tenant_permissions.sh"
+
     async def get_logs(self, app=None, level=None, limit=100):
         """Read logs from file system with structured mapping."""
         logs = []
@@ -87,7 +88,17 @@ class AppMonitorAgent:
         if errors:
             for err in errors:
                 AppEvent("error", "high", err["raw"][:200], err["app"]).log()
-            
+
+            # Fast-path: detect log-permission 500s and self-heal immediately
+            # without waiting for the LLM analysis round-trip.
+            permission_errors = [
+                e for e in errors
+                if "could not be opened in append mode" in e.get("raw", "")
+                and "Permission denied" in e.get("raw", "")
+            ]
+            if permission_errors:
+                await self._auto_fix_log_permissions(permission_errors)
+
             analysis = await self.analyze_errors(errors)
             await archive_knowledge(
                 title=f"Application Error Analysis - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -95,3 +106,36 @@ class AppMonitorAgent:
                 metadata={"error_count": len(errors), "apps": list(set(e["app"] for e in errors))}
             )
         return errors
+
+    async def _auto_fix_log_permissions(self, errors: list):
+        """Immediately repair log file ownership when the scanner sees Permission denied.
+
+        Runs the repair script with an explicit argument list (shell=False) and
+        validates the script path before executing it.
+        """
+        import asyncio
+        apps = list(set(e.get("app", "") for e in errors))
+        logger.warning(f"[app_monitor] Log permission errors detected in {apps} — running repair script.")
+        AppEvent("auto_heal", "warning", f"Triggering permission repair for {apps}", "app_monitor").log()
+
+        script_path = self.repair_script_path
+        if not os.path.isfile(script_path):
+            logger.error(f"[app_monitor] Repair script not found: {script_path}")
+            return
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "bash", script_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=55)
+            if proc.returncode == 0:
+                logger.info("[app_monitor] Permission repair script completed.")
+            else:
+                logger.error(
+                    f"[app_monitor] Permission repair script exited {proc.returncode}: "
+                    f"{stderr.decode(errors='replace')[:500]}"
+                )
+        except Exception as exc:
+            logger.error(f"[app_monitor] Permission repair failed: {exc}")

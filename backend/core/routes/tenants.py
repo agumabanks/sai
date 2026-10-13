@@ -17,6 +17,7 @@ from core.tenant_health import TenantHealthChecker
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+LEGACY_HEALTH_STATUSES = {"healthy", "degraded", "down"}
 
 
 # ==================== SCHEMAS ====================
@@ -68,12 +69,29 @@ def _alert_to_dict(alert: Alert) -> dict:
 
 def _tenant_to_dict(tenant: Tenant, recent_alerts: list | None = None) -> dict:
     """Serialize a Tenant model instance to a dict."""
+    checker = TenantHealthChecker()
+    lifecycle_status = tenant.status
+
+    # Backward compatibility for rows written before lifecycle and health
+    # state were separated. Health-derived statuses are treated as active
+    # lifecycle state and exposed via health_status instead.
+    if lifecycle_status in LEGACY_HEALTH_STATUSES and tenant.last_checked is not None:
+        health_status = lifecycle_status
+        lifecycle_status = "active"
+    else:
+        health_status = checker.compute_tenant_health_status(
+            tenant.health_score,
+            lifecycle_status=lifecycle_status,
+            last_checked=tenant.last_checked,
+        )
+
     result = {
         "id": tenant.id,
         "name": tenant.name,
         "type": tenant.type,
         "url": tenant.url,
-        "status": tenant.status,
+        "status": lifecycle_status,
+        "health_status": health_status,
         "health_score": tenant.health_score,
         "last_checked": tenant.last_checked.isoformat() if tenant.last_checked else None,
         "config": tenant.config,
@@ -361,7 +379,11 @@ INITIAL_TENANTS = [
 
 
 async def seed_initial_tenants():
-    """Seed initial tenants if they don't already exist. Idempotent."""
+    """Seed initial tenants if they don't already exist. Idempotent.
+
+    Also repairs legacy tenant rows whose status was overwritten with health
+    values before lifecycle and health state were split.
+    """
     async with AsyncSessionLocal() as session:
         for tenant_data in INITIAL_TENANTS:
             result = await session.execute(
@@ -372,4 +394,8 @@ async def seed_initial_tenants():
                 tenant = Tenant(**tenant_data)
                 session.add(tenant)
                 logger.info(f"Seeded tenant: {tenant_data['name']}")
+            elif existing.status in LEGACY_HEALTH_STATUSES:
+                existing.status = "active"
+                existing.updated_at = utcnow()
+                logger.info(f"Normalized legacy tenant status for: {tenant_data['name']}")
         await session.commit()

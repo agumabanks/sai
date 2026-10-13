@@ -1,0 +1,38 @@
+name: sanaa_tenant_sync
+version: "1.0.0"
+description: Safely pull a source Sanaa tenant repo and sync changed files to other tenants with backups, PHP lint checks, cache clears, and optional frontend builds.
+permissions: [shell, filesystem]
+requires_approval: false
+timeout: 900
+tags: [tenants, deployment, sync, operations, infrastructure, git]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: Action to perform.
+    required: true
+    enum: [status, pull_source, pull_and_sync, sync_worktree]
+  - name: source_tenant
+    type: string
+    description: Source tenant to pull or copy from.
+    required: false
+    default: kasawo
+    enum: [kasawo, kalamba, bukuya, kyaliwajjala, mityana, mslink]
+  - name: targets
+    type: string
+    description: Comma-separated tenant slugs to update, or all.
+    required: false
+    default: all
+  - name: base_ref
+    type: string
+    description: Optional git base ref for diff reporting.
+    required: false
+  - name: files_csv
+    type: string
+    description: Optional comma-separated file list for sync_worktree. If omitted, changed worktree files are used.
+    required: false
+  - name: build_frontend
+    type: boolean
+    description: Run npm build when synced files touch frontend assets.
+    required: false
+    default: true

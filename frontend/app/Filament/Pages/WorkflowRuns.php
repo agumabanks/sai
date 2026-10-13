@@ -9,13 +9,19 @@ use Filament\Pages\Page;
 class WorkflowRuns extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-arrow-path';
-    protected static ?string $navigationGroup = 'Operations';
+
+    protected static ?string $navigationGroup = 'Skills Lab';
+
     protected static ?int $navigationSort = 2;
+
     protected static string $view = 'filament.pages.workflow-runs';
 
     public array $workflows = [];
+
     public array $runs = [];
+
     public ?array $selectedRun = null;
+
     public ?array $selectedApproval = null;
 
     public function mount(): void
@@ -41,8 +47,9 @@ class WorkflowRuns extends Page
     {
         $engine = app(SanaaEngineService::class);
         $res = $engine->runWorkflow($name, []);
-        if (!empty($res['error'])) {
+        if (! empty($res['error'])) {
             Notification::make()->title('Failed to start workflow')->body((string) $res['error'])->danger()->send();
+
             return;
         }
         Notification::make()->title("Workflow started: {$name}")->success()->send();
@@ -56,11 +63,13 @@ class WorkflowRuns extends Page
         $token = (string) ($approval['resume_token'] ?? '');
         if ($token === '') {
             Notification::make()->title('No resume token found')->danger()->send();
+
             return;
         }
         $res = $engine->resumeWorkflowRun($runId, true, $token);
         if (($res['status'] ?? null) !== 'success') {
             Notification::make()->title('Resume failed')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
+
             return;
         }
         Notification::make()->title("Workflow resumed: #{$runId}")->success()->send();
@@ -75,11 +84,13 @@ class WorkflowRuns extends Page
         $token = (string) ($approval['resume_token'] ?? '');
         if ($token === '') {
             Notification::make()->title('No resume token found')->danger()->send();
+
             return;
         }
         $res = $engine->resumeWorkflowRun($runId, false, $token);
         if (($res['status'] ?? null) !== 'success') {
             Notification::make()->title('Decision failed')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
+
             return;
         }
         Notification::make()->title("Workflow denied/cancelled: #{$runId}")->warning()->send();
@@ -93,6 +104,7 @@ class WorkflowRuns extends Page
         $res = $engine->cancelWorkflowRun($runId);
         if (($res['status'] ?? null) !== 'success') {
             Notification::make()->title('Cancel failed')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
+
             return;
         }
         Notification::make()->title("Workflow cancelled: #{$runId}")->warning()->send();
@@ -100,4 +112,3 @@ class WorkflowRuns extends Page
         $this->refreshData();
     }
 }
-

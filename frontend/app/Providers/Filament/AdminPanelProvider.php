@@ -6,10 +6,9 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages;
+use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
-use Filament\Support\Colors\Color;
 use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -25,9 +24,9 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->path('/')
-            ->login()
-            ->brandName('Sanaa Intelligence')
+            ->path('admin')
+            ->login(\App\Filament\Pages\Auth\Login::class)
+            ->brandName('Sanaa Command Center')
             ->brandLogo(new \Illuminate\Support\HtmlString(view('components.sanaa-logo', ['class' => 'h-8'])->render()))
             ->darkModeBrandLogo(new \Illuminate\Support\HtmlString(view('components.sanaa-logo', ['class' => 'h-8'])->render()))
             ->brandLogoHeight('2rem')
@@ -51,14 +50,12 @@ class AdminPanelProvider extends PanelProvider
             ->darkMode(true)
             ->viteTheme('resources/css/app.css')
             ->sidebarCollapsibleOnDesktop()
+            ->sidebarWidth('17rem')
+            ->collapsedSidebarWidth('4.5rem')
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 \App\Filament\Pages\Dashboard::class,
-            ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
-            ->widgets([
-                // Dashboard widgets are managed in Dashboard page
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
@@ -78,9 +75,22 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
+            ->userMenuItems([
+                'sanaa-os' => MenuItem::make()
+                    ->label('Open Sanaa OS')
+                    ->url('/')
+                    ->icon('heroicon-o-computer-desktop')
+                    ->openUrlInNewTab(),
+            ])
             ->renderHook(
                 \Filament\View\PanelsRenderHook::USER_MENU_BEFORE,
                 fn (): string => \Illuminate\Support\Facades\Blade::render("@livewire('sanaa-fab')"),
+            )
+            ->renderHook(
+                \Filament\View\PanelsRenderHook::SIDEBAR_NAV_START,
+                fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
+                    view('components.sidebar-app-switcher')->render()
+                ),
             );
     }
 }

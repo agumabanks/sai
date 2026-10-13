@@ -1,0 +1,32 @@
+name: laravel_permissions
+version: "1.0.0"
+description: >
+  Detect and fix Laravel storage/log permission drift — specifically root-owned
+  files that prevent PHP-FPM (www-data) from writing logs, causing 500 errors.
+  Runs the server-wide repair script and reports what was fixed.
+permissions: [shell]
+requires_approval: false
+timeout: 60
+tags: [laravel, permissions, ops, soko, self-heal]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "check=report drift only, fix=repair all apps, check_and_fix=detect then repair"
+    required: false
+    default: check_and_fix
+    enum: [check, fix, check_and_fix]
+  - name: app_root
+    type: string
+    description: "Specific Laravel app root to target (e.g. /var/www/soko/apps/backend-laravel). Defaults to all known apps."
+    required: false
+test_cases:
+  - name: "Check all apps for permission drift"
+    args:
+      action: check
+    expect_success: true
+  - name: "Check and fix soko"
+    args:
+      action: check_and_fix
+      app_root: /var/www/soko/apps/backend-laravel
+    expect_success: true

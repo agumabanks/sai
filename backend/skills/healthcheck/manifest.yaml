@@ -1,0 +1,28 @@
+name: healthcheck
+description: "Monitor external endpoints and third-party APIs for uptime. Supports a dynamic endpoint registry (add/remove without code changes) and auto-creates alerts for downed services."
+version: "2.0.0"
+category: "monitoring"
+tags: ["uptime", "healthcheck", "ping", "monitoring", "api", "endpoint", "telecom", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: check_all, check_url, add_endpoint, remove_endpoint, list_endpoints"
+    required: true
+    enum: ["check_all", "check_url", "add_endpoint", "remove_endpoint", "list_endpoints"]
+  url:
+    type: string
+    description: "URL to check or add/remove (for check_url, add_endpoint, remove_endpoint)"
+    required: false
+  name:
+    type: string
+    description: "Human-readable name for the endpoint (for add_endpoint)"
+    required: false
+  timeout:
+    type: integer
+    description: "Request timeout in seconds (default 10)"
+    required: false
+test_cases:
+  - name: "List endpoints"
+    args:
+      action: "list_endpoints"
+    expect_success: true

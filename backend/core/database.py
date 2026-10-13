@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, Float, Boolean,
-    DateTime, JSON, select, desc, func, Index, text,
+    DateTime, JSON, select, desc, func, Index, text, UniqueConstraint,
 )
 
 try:
@@ -144,6 +144,8 @@ class Alert(Base, ActiveRecordMixin):
 
     @classmethod
     async def create(cls, **kwargs):
+        notify = kwargs.pop("notify", None)
+
         # Auto-correlate with tenant if tenant_id not explicitly provided
         if "tenant_id" not in kwargs or kwargs["tenant_id"] is None:
             try:
@@ -161,18 +163,31 @@ class Alert(Base, ActiveRecordMixin):
         severity = kwargs.get("severity", "info").lower()
         if severity in ("high", "critical"):
             try:
-                import asyncio
+                if notify is None:
+                    notify = await SystemKnowledge.get_pref(
+                        "alert.instant_email_enabled",
+                        False,
+                    )
+
+                if isinstance(notify, str):
+                    notify_enabled = notify.strip().lower() not in (
+                        "false",
+                        "0",
+                        "no",
+                        "off",
+                        "",
+                    )
+                else:
+                    notify_enabled = bool(notify)
+
+                if not notify_enabled:
+                    return instance
+
                 from core.agents.report_agent import ReportAgent
                 reporter = ReportAgent()
                 subject = f"[Sanaa AI] {severity.upper()} ALERT: {kwargs.get('title', kwargs.get('source', 'System'))}"
                 body = f"Severity: {severity.upper()}\nSource: {kwargs.get('source', 'N/A')}\nMetric: {kwargs.get('metric', 'N/A')}\n\n{kwargs.get('message', '')}"
-                
-                # Check for active event loop before creating task
-                try:
-                    asyncio.get_running_loop()
-                    asyncio.create_task(reporter.send_alert_email(subject, body))
-                except RuntimeError:
-                    asyncio.create_task(reporter.send_alert_email(subject, body))
+                await reporter.send_alert_email(subject, body)
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).error(f"Failed to trigger instant alert notification: {e}")
@@ -642,6 +657,38 @@ class PendingApproval(Base, ActiveRecordMixin):
     )
 
 
+# ==================== KNOWLEDGE GRAPH EDGES ====================
+
+class MemoryEdge(Base, ActiveRecordMixin):
+    """Directed weighted edge between two agent_memory entries forming a knowledge graph.
+
+    Relation types include:
+      relates_to    — generic semantic relationship
+      same_as       — identical concept in different projects (e.g. brand colors, timeouts)
+      depends_on    — one concept depends on another
+      conflicts_with — conflicting values/decisions across projects
+      implements    — implementation of a decision/requirement
+      references    — mentions or references another memory
+      config_of     — configuration value that applies to a project
+      propagates_to — propagated from one project to another
+    """
+    __tablename__ = "memory_edges"
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, nullable=False, index=True)
+    target_id = Column(Integer, nullable=False, index=True)
+    relation_type = Column(String(50), nullable=False, index=True)
+    weight = Column(Float, default=1.0)
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_memory_edges_relation", "relation_type"),
+        Index("idx_memory_edges_weight", "weight"),
+        UniqueConstraint("source_id", "target_id", "relation_type", name="uq_memory_edge_unique"),
+    )
+
+
 # ==================== ML SELF-LEARNING TABLES ====================
 
 class SkillMetrics(Base, ActiveRecordMixin):
@@ -981,6 +1028,319 @@ class AlertEscalation(Base, ActiveRecordMixin):
         Index("idx_alert_escalations_rule", "alert_rule_id"),
         Index("idx_alert_escalations_ack", "acknowledged"),
     )
+
+
+# ==================== ACCOUNT MODELS ====================
+
+class Account(Base, ActiveRecordMixin):
+    """Sanaa OS user account tied to session/auth identity."""
+    __tablename__ = "accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    role = Column(String(50), nullable=True, default="operator")
+    os_preferences_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_accounts_email", "email", unique=True),
+    )
+
+    @classmethod
+    async def get_by_email(cls, email: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.email == email)
+            )
+            return result.scalars().first()
+
+    @classmethod
+    async def upsert_from_session(cls, email: str, name: str = None, role: str = None):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.email == email)
+            )
+            account = result.scalars().first()
+            now = utcnow()
+            if account:
+                if name:
+                    account.name = name
+                if role:
+                    account.role = role
+                account.updated_at = now
+            else:
+                account = cls(
+                    email=email,
+                    name=name or email,
+                    role=role or "operator",
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(account)
+            await session.commit()
+            return account
+
+
+# ==================== USER CLOUD METADATA ====================
+
+class UserCloudMeta(Base, ActiveRecordMixin):
+    """Per-user cloud metadata (starred files, activity, shares, sync state).
+
+    Replaces the legacy `.kabati/cloud.json` file for each user.
+    """
+    __tablename__ = "user_cloud_meta"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True, unique=True)
+    starred = Column(JSON, nullable=False, default=list)
+    activity = Column(JSON, nullable=False, default=list)
+    shares = Column(JSON, nullable=False, default=list)
+    sync_status = Column(String(20), nullable=False, default="synced")
+    pending_count = Column(Integer, nullable=False, default=0)
+    last_sync_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_user_cloud_meta_email", "email", unique=True),
+    )
+
+    @classmethod
+    async def get_by_email(cls, email: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.email == (email or "").lower().strip())
+            )
+            return result.scalars().first()
+
+
+# ==================== DEVICE ARMY MODELS ====================
+
+
+class Device(Base, ActiveRecordMixin):
+    """Registered worker device in the Sanaa Device Army."""
+    __tablename__ = "devices"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String(64), unique=True, nullable=False, index=True)
+    device_fingerprint = Column(Text, unique=True, nullable=False)
+    display_name = Column(String(200), nullable=True)
+    codename = Column(String(100), nullable=True)
+    worker_role = Column(String(50), nullable=True, default="worker")
+    owner_email = Column(String(255), nullable=True, index=True)
+    device_model = Column(String(200), nullable=True)
+    android_version = Column(String(50), nullable=True)
+    cpu_info = Column(JSON, nullable=True)
+    ram_mb = Column(Integer, nullable=True)
+    storage_mb = Column(BigInteger, nullable=True)
+    battery_health = Column(String(50), nullable=True)
+    sensors = Column(JSON, nullable=True)
+    connectivity_capabilities = Column(JSON, nullable=True)
+    worker_token = Column(Text, nullable=True)  # encrypted
+    encryption_key = Column(Text, nullable=True)  # encrypted
+    public_key = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="offline")
+    last_heartbeat = Column(DateTime(timezone=True), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    app_version = Column(String(20), nullable=True)
+    total_tasks_completed = Column(Integer, default=0)
+    total_uptime_seconds = Column(BigInteger, default=0)
+    is_revoked = Column(Boolean, default=False)
+    extra_metadata = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_devices_status", "status"),
+        Index("idx_devices_role", "worker_role"),
+        Index("idx_devices_owner_email", "owner_email"),
+        Index("idx_devices_revoked", "is_revoked"),
+    )
+
+    @classmethod
+    async def find_by_fingerprint(cls, fingerprint: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.device_fingerprint == fingerprint)
+            )
+            return result.scalars().first()
+
+    @classmethod
+    async def find_by_token(cls, token: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.worker_token == token)
+            )
+            return result.scalars().first()
+
+    @classmethod
+    async def get_online(cls):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.status.in_(["online", "idle", "busy"])).order_by(cls.last_heartbeat.desc())
+            )
+            return result.scalars().all()
+
+    @classmethod
+    async def get_by_role(cls, role: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.worker_role == role, cls.is_revoked == False)
+            )
+            return result.scalars().all()
+
+    @classmethod
+    async def get_by_owner(cls, owner_email: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.owner_email == owner_email).order_by(cls.created_at.desc())
+            )
+            return result.scalars().all()
+
+
+class DevicePairing(Base, ActiveRecordMixin):
+    """Tracks device pairing key lifecycle."""
+    __tablename__ = "device_pairings"
+    id = Column(Integer, primary_key=True, index=True)
+    pairing_key = Column(String(64), unique=True, nullable=False, index=True)
+    device_fingerprint = Column(Text, nullable=False)
+    owner_email = Column(String(255), nullable=True, index=True)
+    status = Column(String(20), nullable=False, default="pending")
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    paired_at = Column(DateTime(timezone=True), nullable=True)
+    device_id = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_pairings_status", "status"),
+        Index("idx_pairings_fingerprint", "device_fingerprint"),
+        Index("idx_pairings_owner_email", "owner_email"),
+    )
+
+    @classmethod
+    async def find_valid(cls, pairing_key: str):
+        from datetime import datetime, timezone
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(
+                    cls.pairing_key == pairing_key,
+                    cls.status == "pending",
+                    cls.expires_at > datetime.now(timezone.utc),
+                )
+            )
+            return result.scalars().first()
+
+
+class DeviceTask(Base, ActiveRecordMixin):
+    """Task assigned to a worker device."""
+    __tablename__ = "device_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(String(64), unique=True, nullable=False, index=True)
+    device_id = Column(String(64), nullable=False, index=True)
+    task_type = Column(String(50), nullable=False)
+    priority = Column(Integer, default=0)
+    task_payload = Column("payload", JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    result = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    logs = Column(Text, nullable=True)
+    max_retries = Column(Integer, default=3)
+    retry_count = Column(Integer, default=0)
+    assigned_by = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        Index("idx_tasks_device_status", "device_id", "status"),
+        Index("idx_tasks_priority", "priority", "status"),
+    )
+
+    @classmethod
+    async def get_pending_for_device(cls, device_id: str, limit: int = 10):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(
+                    cls.device_id == device_id,
+                    cls.status.in_(["pending", "assigned"]),
+                ).order_by(cls.priority.desc(), cls.created_at.asc()).limit(limit)
+            )
+            return result.scalars().all()
+
+    @classmethod
+    async def get_device_history(cls, device_id: str, limit: int = 50):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.device_id == device_id).order_by(cls.created_at.desc()).limit(limit)
+            )
+            return result.scalars().all()
+
+
+class DeviceCommand(Base, ActiveRecordMixin):
+    """Remote command sent to a device."""
+    __tablename__ = "device_commands"
+    id = Column(Integer, primary_key=True, index=True)
+    command_id = Column(String(64), unique=True, nullable=False, index=True)
+    device_id = Column(String(64), nullable=False, index=True)
+    command_type = Column(String(50), nullable=False)
+    command_payload = Column("payload", JSON, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    sent_at = Column(DateTime(timezone=True), default=utcnow)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    executed_at = Column(DateTime(timezone=True), nullable=True)
+    result = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_commands_device_status", "device_id", "status"),
+    )
+
+    @classmethod
+    async def get_pending_for_device(cls, device_id: str):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(
+                    cls.device_id == device_id,
+                    cls.status.in_(["pending", "sent"]),
+                ).order_by(cls.created_at.asc())
+            )
+            return result.scalars().all()
+
+
+class DeviceLog(Base, ActiveRecordMixin):
+    """Telemetry and log entries from worker devices."""
+    __tablename__ = "device_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String(64), nullable=False, index=True)
+    log_type = Column(String(30), nullable=False)
+    source = Column(String(100), nullable=True)
+    message = Column(Text, nullable=False)
+    log_metadata = Column("metadata", JSON, nullable=True)
+    severity = Column(String(10), nullable=True, default="info")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("idx_logs_device_created", "device_id", "created_at"),
+        Index("idx_logs_type", "log_type"),
+        Index("idx_logs_severity", "severity"),
+    )
+
+    @classmethod
+    async def get_recent_for_device(cls, device_id: str, limit: int = 100):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.device_id == device_id).order_by(cls.created_at.desc()).limit(limit)
+            )
+            return result.scalars().all()
+
+    @classmethod
+    async def get_by_severity(cls, severity: str, limit: int = 50):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(cls).where(cls.severity == severity).order_by(cls.created_at.desc()).limit(limit)
+            )
+            return result.scalars().all()
 
 
 # ==================== DB INIT ====================

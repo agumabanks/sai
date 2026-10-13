@@ -1,0 +1,28 @@
+name: vps_janitor
+version: "1.0.0"
+description: >
+  VPS disk space janitor — scans for and removes old database backups, build
+  artifacts, package caches, and stale temp files across all projects on the
+  server. Reports bytes freed by category. Safe: only removes files matching
+  known-safe patterns (backup rotations, build outputs, caches).
+permissions: [shell, filesystem]
+requires_approval: false
+timeout: 120
+tags: [disk, cleanup, maintenance, backups, infrastructure]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "scan: report what would be freed. clean: execute cleanup. status: show current disk usage."
+    required: true
+    enum: [scan, clean, status]
+  - name: max_age_days
+    type: integer
+    description: Delete backup files older than this many days (default 3).
+    required: false
+    default: 3
+  - name: disk_threshold_pct
+    type: integer
+    description: Only run cleanup when disk usage exceeds this percentage (default 80). Set 0 to always run.
+    required: false
+    default: 80

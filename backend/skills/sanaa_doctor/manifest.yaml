@@ -1,0 +1,48 @@
+name: sanaa_doctor
+version: "2.0.0"
+description: Run ecosystem-aware doctor checks for Sanaa tenants, predict likely sync or deployment blockers, and optionally deliver the briefing by email or to Sanaa AI memory.
+permissions: [shell, filesystem]
+requires_approval: false
+timeout: 600
+tags: [operations, monitoring, infrastructure, doctor, tenants, git, php, ml, reporting]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: Doctor action to perform.
+    required: true
+    enum: [check_all, ecosystem_report, tenant_git, lint_changed, service_status]
+  - name: tenant
+    type: string
+    description: Tenant slug or all.
+    required: false
+    default: all
+    enum: [all, kasawo, kalamba, bukuya, kyaliwajjala, mityana, mslink]
+  - name: lint_scope
+    type: string
+    description: File set to lint for lint_changed and check_all.
+    required: false
+    default: last_commit
+    enum: [last_commit, worktree]
+  - name: report_channel
+    type: string
+    description: Where to send the doctor briefing after generation.
+    required: false
+    default: none
+    enum: [none, email, sanaa_ai, both]
+  - name: recipient
+    type: string
+    description: Email recipient or comma-separated recipients when report_channel includes email.
+    required: false
+    default: ""
+  - name: include_ml
+    type: boolean
+    description: Include ML-derived operational confidence and automation signals.
+    required: false
+    default: true
+  - name: detail_level
+    type: string
+    description: summary keeps the report short; full includes tenant and lint detail.
+    required: false
+    default: full
+    enum: [summary, full]

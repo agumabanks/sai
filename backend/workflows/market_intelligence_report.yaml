@@ -1,0 +1,56 @@
+name: market_intelligence_report
+version: "1.0.0"
+description: Scrapes competitor sites, analyzes changes, identifies opportunities, and sends report.
+
+args:
+  focus_topic:
+    type: string
+    default: "fintech and eCommerce in East Africa"
+    description: "The primary market or strategic topic to focus the intelligence report on."
+
+steps:
+  - id: watch_sites
+    action: skill
+    description: Scan configured competitor websites for recent changes using site_watcher.
+    params:
+      skill: site_watcher
+      args:
+        action: "check_now"
+
+  - id: media_analysis
+    action: skill
+    description: Run the media agent to get general market insights on the topic.
+    params:
+      skill: media_agent
+      args:
+        action: "analyze_market"
+        topic: "{{ args.focus_topic }}"
+
+  - id: synthesize_report
+    action: llm
+    description: Synthesize the competitor diffs and market insights into a structured report.
+    params:
+      prompt: |
+        Assemble a "Weekly Market Intelligence Report" using the following inputs.
+        
+        ## Competitor Site Changes Detected:
+        {{ steps.watch_sites.output }}
+        
+        ## General Market & Media Analysis:
+        {{ steps.media_analysis.output }}
+        
+        Provide the report formatted beautifully in Markdown with sections for:
+        1. Executive Summary
+        2. Competitor Updates (pricing, features, shifts)
+        3. Strategic Opportunities
+        4. Action Items for Sanaa AI
+      complexity: high
+    depends_on: [watch_sites, media_analysis]
+
+  - id: notify_leadership
+    action: notify
+    description: Dispatch the final intelligence report to the administrator.
+    params:
+      channel: email
+      message: "{{ steps.synthesize_report.output }}"
+    depends_on: [synthesize_report]

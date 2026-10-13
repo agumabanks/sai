@@ -16,6 +16,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -36,6 +37,37 @@ MAILCOW_KEY_CONTAINERS = [
     "mailcowdockerized-mysql-mailcow-1",
     "mailcowdockerized-sogo-mailcow-1",
 ]
+
+
+def _pref_enabled(value, default=False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "off", "")
+    return bool(value)
+
+
+def _is_synthetic_test_tenant(tenant_data: dict) -> bool:
+    """Keep seeded/test tenant rows out of production health polling."""
+    url = (tenant_data.get("url") or "").strip().lower()
+    name = (tenant_data.get("name") or "").strip().lower()
+    if not url:
+        return False
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        host = ""
+
+    if host in {"test.example.com", "mail.test.com"}:
+        return True
+    if host.startswith(("test-", "corr-url-")):
+        return True
+    if ".test." in host or host.endswith(".test"):
+        return True
+    if name.startswith(("alerts-", "case-", "corr-name-", "lifecycle-", "limit-", "list-", "no-alerts-", "order-", "query", "updated-")):
+        return True
+    return False
 
 
 class TenantHealthChecker:
@@ -61,6 +93,20 @@ class TenantHealthChecker:
         tenant_type = tenant_data.get("type", "other")
         url = tenant_data.get("url")
         current_status = tenant_data.get("status", "active")
+
+        # Skip test fixtures that may exist in the production control DB.
+        if _is_synthetic_test_tenant(tenant_data):
+            return {
+                "tenant_id": tenant_id,
+                "name": name,
+                "type": tenant_type,
+                "status": "inactive",
+                "health_score": 0,
+                "response_time_ms": 0,
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "error": "Synthetic test tenant skipped",
+                "skipped": True,
+            }
 
         # Skip inactive tenants
         if current_status == "inactive":
@@ -338,6 +384,31 @@ class TenantHealthChecker:
         else:
             return "down"
 
+    def compute_tenant_health_status(
+        self,
+        health_score: float | int | None,
+        lifecycle_status: str = "active",
+        last_checked=None,
+    ) -> str:
+        """Map persisted tenant fields to a UI-facing health status.
+
+        Lifecycle state remains authoritative for enable/disable behavior.
+        Health state is derived from the latest score so health polling does
+        not overwrite whether a tenant is active or inactive.
+        """
+        if lifecycle_status == "inactive":
+            return "inactive"
+
+        if last_checked is None:
+            return "unknown"
+
+        score = float(health_score or 0)
+        if score >= 80:
+            return "healthy"
+        if score >= 30:
+            return "degraded"
+        return "down"
+
     async def check_all_tenants(self) -> dict:
         """Check health of all active tenants and return aggregated result.
 
@@ -407,13 +478,15 @@ class TenantHealthChecker:
     async def update_tenant_health_in_db(self, check_result: dict) -> None:
         """Persist a health check result back to the Tenant row.
 
-        Updates status, health_score, and last_checked for the tenant.
+        Updates health_score and last_checked for the tenant.
+
+        Tenant.status is reserved for lifecycle state (active/inactive) so
+        health polling does not implicitly disable or re-enable a service.
         """
         tenant_id = check_result.get("tenant_id")
         if not tenant_id or check_result.get("skipped"):
             return
 
-        new_status = check_result.get("status", "down")
         health_score = check_result.get("health_score", 0)
 
         async with AsyncSessionLocal() as session:
@@ -424,20 +497,19 @@ class TenantHealthChecker:
             if not tenant:
                 return
 
-            tenant.status = new_status
             tenant.health_score = health_score
             tenant.last_checked = utcnow()
             tenant.updated_at = utcnow()
             await session.commit()
 
     async def handle_degradation_alert(self, check_result: dict) -> None:
-        """Create an alert and send email notification when tenant health degrades.
+        """Create an alert when tenant health degrades.
 
         Called when a tenant's health status is 'degraded' or 'down'.
-        Creates an Alert record associated with the tenant and sends an
-        email notification to configured recipients via ReportAgent.
+        Creates an Alert record associated with the tenant. Immediate per-tenant
+        emails are disabled by default so a single cycle cannot spam the inbox.
         """
-        from core.database import Alert
+        from core.database import Alert, SystemKnowledge
 
         tenant_id = check_result.get("tenant_id")
         name = check_result.get("name", "unknown")
@@ -465,12 +537,20 @@ class TenantHealthChecker:
                 message=message,
                 metric="health_score",
                 tenant_id=tenant_id,
+                notify=False,
             )
             logger.info(f"[TenantHealth] Created {severity} alert for tenant '{name}' ({status})")
         except Exception as e:
             logger.error(f"[TenantHealth] Failed to create alert for tenant '{name}': {e}")
 
-        # Send email notification via ReportAgent
+        send_immediate = await SystemKnowledge.get_pref(
+            "alert.tenant_immediate_email_enabled",
+            False,
+        )
+        if not _pref_enabled(send_immediate, False):
+            return
+
+        # Optional immediate email notification via ReportAgent.
         try:
             from core.agents.report_agent import ReportAgent
             reporter = ReportAgent()
@@ -486,10 +566,83 @@ class TenantHealthChecker:
                 f"Checked at: {check_result.get('checked_at', 'N/A')}\n\n"
                 f"Please investigate immediately."
             )
-            await reporter.send_alert_email(email_subject, email_body)
+            await reporter.send_alert_email(
+                email_subject,
+                email_body,
+                category="tenant_health_immediate",
+            )
             logger.info(f"[TenantHealth] Sent degradation email for tenant '{name}'")
         except Exception as e:
             logger.error(f"[TenantHealth] Failed to send degradation email for tenant '{name}': {e}")
+
+    async def send_degradation_digest(self, health_data: dict) -> None:
+        """Send one rate-limited tenant health digest for a noisy cycle."""
+        from core.database import SystemKnowledge
+
+        enabled = await SystemKnowledge.get_pref("alert.tenant_digest_enabled", True)
+        if not _pref_enabled(enabled, True):
+            return
+
+        problem_tenants = [
+            result
+            for result in health_data.get("tenants", [])
+            if not result.get("skipped") and result.get("status") in ("degraded", "down")
+        ]
+        if not problem_tenants:
+            return
+
+        down = [r for r in problem_tenants if r.get("status") == "down"]
+        degraded = [r for r in problem_tenants if r.get("status") == "degraded"]
+        problem_tenants.sort(
+            key=lambda r: (
+                0 if r.get("status") == "down" else 1,
+                r.get("health_score") or 0,
+                r.get("name") or "",
+            )
+        )
+
+        lines = [
+            "TENANT HEALTH DIGEST",
+            "=" * 40,
+            "",
+            f"Overall: {health_data.get('overall_status', 'unknown').upper()} "
+            f"({health_data.get('overall_score', 'N/A')}/100)",
+            f"Affected tenants: {len(problem_tenants)} "
+            f"({len(down)} down, {len(degraded)} degraded)",
+            f"Checked at: {health_data.get('checked_at', 'N/A')}",
+            "",
+            "Top affected tenants:",
+        ]
+
+        for result in problem_tenants[:20]:
+            lines.append(
+                "- "
+                f"{result.get('name', 'unknown')}: "
+                f"{str(result.get('status', 'unknown')).upper()} "
+                f"score={result.get('health_score', 'N/A')} "
+                f"error={result.get('error') or 'N/A'}"
+            )
+
+        remaining = len(problem_tenants) - 20
+        if remaining > 0:
+            lines.append(f"... and {remaining} more affected tenants.")
+
+        digest_cooldown = await SystemKnowledge.get_pref(
+            "alert.tenant_digest_cooldown_seconds",
+            3600,
+        )
+
+        try:
+            from core.agents.report_agent import ReportAgent
+            reporter = ReportAgent()
+            await reporter.send_alert_email(
+                subject="[Sanaa AI] Tenant Health Digest",
+                body="\n".join(lines),
+                cooldown_seconds=digest_cooldown,
+                category="tenant_health",
+            )
+        except Exception as e:
+            logger.error(f"[TenantHealth] Failed to send degradation digest: {e}")
 
     async def run_health_update_cycle(self) -> dict:
         """Run a full health check cycle: check all tenants and persist results.
@@ -511,7 +664,7 @@ class TenantHealthChecker:
                     f"{tenant_result.get('name', '?')}: {e}"
                 )
 
-            # Auto-create alert + email for degraded/down tenants
+            # Auto-create alert records. Email is handled as a digest after the cycle.
             try:
                 await self.handle_degradation_alert(tenant_result)
             except Exception as e:
@@ -519,6 +672,11 @@ class TenantHealthChecker:
                     f"Failed to handle degradation alert for tenant "
                     f"{tenant_result.get('name', '?')}: {e}"
                 )
+
+        try:
+            await self.send_degradation_digest(health_data)
+        except Exception as e:
+            logger.error(f"Failed to send tenant health digest: {e}")
 
         logger.info(
             f"[TenantHealth] Cycle complete: "

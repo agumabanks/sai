@@ -104,32 +104,39 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=2, minute=30, day_of_week='mon'),  # Weekly Monday 2:30 AM EAT
     },
 
-    # ===== BACKUP AUTOMATION =====
-    'backup-all': {
-        'task': 'core.tasks.run_backup',
-        'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM EAT
-        'kwargs': {'target': 'all'},
-    },
-
     # ===== TENANT HEALTH MONITORING =====
     'tenant-health-update': {
         'task': 'core.tasks.update_tenant_health',
         'schedule': 300,  # Every 5 minutes
     },
+
+    # ===== SANAABRAIN AUTO-LEARNING =====
+    'brain-hourly-learn': {
+        'task': 'core.tasks.brain_hourly_learn',
+        'schedule': 3600,  # Every hour
+    },
+    'brain-weekly-habits': {
+        'task': 'core.tasks.brain_weekly_habits',
+        'schedule': crontab(hour=6, minute=0, day_of_week='mon'),  # Monday 6 AM EAT
+    },
 }
 
 
 def _run_async(coro):
-    """Helper to run async code in Celery sync tasks."""
+    """Helper to run async code in Celery sync tasks.
+
+    Uses asyncio.Runner (Python 3.11+) so each task gets a fresh, properly-closed
+    event loop instead of reusing or leaking a global loop.
+    """
     import asyncio
+    runner = asyncio.Runner()
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
+        return runner.run(coro)
+    finally:
+        try:
+            runner.close()
+        except Exception:
+            pass
 
 
 @app.task
@@ -178,7 +185,7 @@ def watchdog_check():
             from datetime import datetime, timezone
 
             cfg = get_settings()
-            if cfg.sanaa_clade_enabled:
+            if cfg.watchdog_llm_advisor_enabled and cfg.sanaa_clade_enabled and (events or actions):
                 bridge = SanaaCladeBridge()
                 if bridge.is_available():
                     compact_events = [
@@ -198,7 +205,7 @@ def watchdog_check():
                         f"HEALER_ACTIONS={json.dumps(actions[:20])}\n"
                         f"CHECKED_METRICS={json.dumps(checked_metrics[:50])}"
                     )
-                    advisor = await bridge.ask(prompt)
+                    advisor = await bridge.ask(prompt, source="groq", no_admin_sync=True)
                     if advisor.success and advisor.output:
                         advisor_payload = advisor.output
                         try:
@@ -785,5 +792,81 @@ def update_tenant_health():
                 )
             except Exception:
                 pass
+
+    _run_async(_run())
+
+
+@app.task
+def brain_hourly_learn():
+    """Run SanaaBrain auto-learning cycle. Runs every hour."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.brain.sanaabrain_learner import SanaabrainLearner
+        from core.agents.brain_watcher import scan_and_learn
+
+        # 1. Standard learner — mines DB tables for insights
+        learner = SanaabrainLearner()
+        result = await learner.run_all(hours_back=2)
+
+        # 2. Brain watcher — scans VPS for changes, new projects, skills
+        try:
+            watch_result = await scan_and_learn(hours_back=24)
+            logger.info(f"[AutoLearn] Brain watcher: {watch_result.get('memories_created', 0)} memories")
+            result['brain_watcher'] = watch_result
+        except Exception as e:
+            logger.error(f"[AutoLearn] Brain watcher failed: {e}")
+            result['brain_watcher'] = {"error": str(e)}
+
+        # 3. Auto-link — create graph edges between related memories
+        try:
+            from core.database import AsyncSessionLocal
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as session:
+                # Link same-category memories across projects
+                await session.execute(text("""
+                    INSERT INTO memory_edges (source_id, target_id, relation_type, weight, metadata, created_at, updated_at)
+                    SELECT m1.id, m2.id, 'relates_to', 0.5,
+                           jsonb_build_object('auto', true, 'reason', 'auto_link_hourly'),
+                           NOW(), NOW()
+                    FROM agent_memory m1
+                    JOIN agent_memory m2 ON m1.category = m2.category AND m1.id < m2.id
+                    WHERE m1.metadata->>'project' != m2.metadata->>'project'
+                      AND m1.source NOT LIKE 'autolearn_%'
+                      AND m2.source NOT LIKE 'autolearn_%'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM memory_edges e
+                          WHERE e.source_id = m1.id AND e.target_id = m2.id
+                      )
+                    LIMIT 100
+                    ON CONFLICT DO NOTHING
+                """))
+                await session.commit()
+                logger.info("[AutoLearn] Auto-link: cross-project edges created")
+        except Exception as e:
+            logger.warning(f"[AutoLearn] Auto-link failed: {e}")
+
+        logger.info(
+            f"[AutoLearn] Hourly cycle complete: "
+            f"{result['methods_run']} methods, {result['memories_created']} memories, "
+            f"watcher: {result.get('brain_watcher', {}).get('memories_created', 0)}. "
+            f"Errors: {result['errors']}"
+        )
+
+    _run_async(_run())
+
+
+@app.task
+def brain_weekly_habits():
+    """Run SanaaBrain weekly habit analysis. Runs every Monday at 6 AM EAT."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async def _run():
+        from core.brain.sanaabrain_learner import SanaabrainLearner
+        learner = SanaabrainLearner()
+        count = await learner.generate_weekly_habits(days_back=7)
+        logger.info(f"[AutoLearn] Weekly habits: {count} memories stored")
 
     _run_async(_run())

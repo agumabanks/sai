@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class AutonomousSkillMapper:
     """Manages autonomous tool discovery and installation."""
-    def __init__(self, skills_dir: str = "/var/www/ai.sanaa.co/core/skills"):
+    def __init__(self, skills_dir: str = "/var/www/ai.sanaa.co/backend/skills"):
         self.skills_dir = skills_dir
         self.memory = IntelligenceMemory()
         self.scanner = IntelligenceScanner()
@@ -32,7 +32,7 @@ class AutonomousSkillMapper:
         # In a real scenario, we'd use the Brain to filter these.
         # For now, we'll just log discoveries to Strategic Signals.
         if skill_candidates:
-            self.memory.add_strategic_signal({
+            await self.memory.add_strategic_signal({
                 "category": "discovery",
                 "title": f"Skill Candidates in {repo_name}",
                 "summary": f"Found {len(skill_candidates)} potential tools for Sanaa integration.",

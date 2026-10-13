@@ -1,26 +1,88 @@
 name: incident_response
-version: "1.0.0"
-description: Automated incident response — detect, assess, auto-heal, notify, escalate
+version: "2.0.0"
+description: >
+  Automated incident response — detect 500s + disk pressure, auto-heal,
+  assess remaining issues, notify. Covers farzone.sanaa.co and all Sanaa sites.
 
 steps:
+  # ── Step 1: Fix Laravel storage permissions (most common cause of 500s) ───
+  - id: fix_permissions
+    action: skill
+    description: >
+      Detect and fix root-owned Laravel storage files. This is the cause of
+      500s on /login and other routes whenever artisan was run as root.
+    params:
+      skill: laravel_permissions
+      args:
+        action: check_and_fix
+    on_failure: skip
+
+  # ── Step 2: Scan ALL sites for HTTP 500s ──────────────────────────────────
+  - id: scan_sites
+    action: skill
+    description: "Check every enabled nginx site for HTTP 5xx errors and parse error logs"
+    params:
+      skill: site_500_healer
+      args:
+        action: scan
+    depends_on: [fix_permissions]
+
+  # ── Step 3: Auto-heal any 500s (cache clear, php-fpm reload) ─────────────
+  - id: heal_sites
+    action: skill
+    description: "Auto-remediate any sites returning 5xx"
+    condition: "steps.scan_sites.data.has_500 == true"
+    params:
+      skill: site_500_healer
+      args:
+        action: heal
+        send_report: true
+        recipient: "sanaaa.co@gmail.com"
+    depends_on: [scan_sites]
+    on_failure: skip
+
+  # ── Step 4: Check disk — alert if above 85% ───────────────────────────────
+  - id: disk_check
+    action: skill
+    description: "Check disk usage and clean if above 85%"
+    params:
+      skill: vps_janitor
+      args:
+        action: clean
+        max_age_days: 3
+        disk_threshold_pct: 85
+    depends_on: [fix_permissions]
+
+  # ── Step 5: Gather broader server health ─────────────────────────────────
   - id: detect
     action: skill
-    description: Gather current health metrics and error state
+    description: "Gather server health metrics (CPU, RAM, services)"
     params:
       skill: server_health
       args:
         metric: all
         format: json
+    depends_on: [heal_sites, disk_check]
 
+  # ── Step 6: LLM assessment of remaining issues ────────────────────────────
   - id: assess
     action: llm
-    description: Analyse the incident and recommend actions
+    description: "Analyse health data and identify remaining incidents"
     params:
       prompt: |
-        Analyse this server health data and identify any incidents:
+        Analyse this server health data and identify any unresolved incidents:
         {{ steps.detect.output }}
 
-        For each issue found, respond ONLY in JSON:
+        Site 500 scan result:
+        {{ steps.scan_sites.output }}
+
+        Auto-heal result:
+        {{ steps.heal_sites.output | default("No 5xx detected") }}
+
+        Disk cleanup result:
+        {{ steps.disk_check.output }}
+
+        For each remaining issue, respond ONLY in JSON:
         {
           "incidents": [
             {
@@ -36,54 +98,42 @@ steps:
       complexity: high
     depends_on: [detect]
 
-  - id: auto_heal
-    action: notify
-    description: Present deterministic remediation plan for approval
-    approval: true
-    condition: "steps.assess.output contains 'auto_healable'"
-    params:
-      channel: web
-      message: |
-        Advisory-first remediation plan (approval required).
-        The AI assessment suggested auto-healable issues.
-        
-        Proposed deterministic actions (Sanaa stack):
-        - Restart antigravity-web
-        - Restart antigravity-worker
-        - Restart antigravity-beat
-        - Restart php8.4-fpm (if installed)
-        
-        Assessment:
-        {{ steps.assess.output }}
-    depends_on: [assess]
-
+  # ── Step 7: Service restart if critical service issues remain ─────────────
   - id: remediate_known_services
     action: shell
-    description: Restart known Sanaa services after approval
+    description: "Restart Sanaa services for any unresolved service incidents"
     condition: "steps.assess.output contains 'auto_healable'"
     params:
-      command: "(systemctl restart antigravity-web antigravity-worker antigravity-beat || true) && (systemctl restart php8.4-fpm || true)"
+      command: >
+        (systemctl restart antigravity-web antigravity-worker antigravity-beat || true) &&
+        (systemctl reload php8.4-fpm || true)
     on_failure: skip
-    depends_on: [auto_heal]
+    depends_on: [assess]
 
+  # ── Step 8: Verify final state ────────────────────────────────────────────
   - id: verify
     action: skill
-    description: Re-check health after healing attempt
+    description: "Re-check all sites and server health after all healing"
     params:
-      skill: server_health
+      skill: site_500_healer
       args:
-        metric: all
+        action: scan
     depends_on: [remediate_known_services]
 
+  # ── Step 9: Notify dashboard ──────────────────────────────────────────────
   - id: notify
     action: notify
-    description: Alert administrator about the incident
+    description: "Post incident response summary to web dashboard"
     params:
       channel: web
       message: |
-        🚨 Incident Response Report
-        Initial Assessment: {{ steps.assess.output }}
-        Remediation Approval: {{ steps.auto_heal.output }}
-        Healing Attempt: {{ steps.remediate_known_services.output }}
-        Post-heal Verification: {{ steps.verify.output }}
+        🚨 **Incident Response Report**
+
+        **Permissions Fix:** {{ steps.fix_permissions.output }}
+        **Site 500 Scan:** {{ steps.scan_sites.output }}
+        **Auto-Heal:** {{ steps.heal_sites.output | default("No action needed") }}
+        **Disk Cleanup:** {{ steps.disk_check.output }}
+        **LLM Assessment:** {{ steps.assess.output }}
+        **Service Remediation:** {{ steps.remediate_known_services.output | default("Not triggered") }}
+        **Final Site Status:** {{ steps.verify.output }}
     depends_on: [verify]

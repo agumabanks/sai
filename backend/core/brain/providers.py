@@ -7,24 +7,29 @@ from core.config import get_settings
 
 settings = get_settings()
 
+# Provider priority in auto mode:
+#   PRIMARY  → Groq        (fast, free tier, default for all complexity levels)
+#   FALLBACK → OpenRouter  (when Groq is unavailable)
+#   LAST RESORT → Ollama/local (only when all cloud providers are unreachable)
+#
+# This order is enforced by brain_auto_provider_order and _build_model_chain.
+# Ollama is NEVER the default — it is only reached after cloud providers fail.
+
 TIERS: Dict[int, Dict[str, Any]] = {
     1: {
-        "name": "local",
+        "name": "fast",          # Groq primary, Ollama last-resort
         "max_tokens": 2048,
-        "use_for": ["status_check", "simple_query", "format_response"],
-        "cost_per_1k": 0.0,
+        "use_for": ["status_check", "simple_query", "format_response", "json_extraction"],
     },
     2: {
-        "name": "cloud_cheap",
+        "name": "balanced",      # Groq primary, Ollama last-resort
         "max_tokens": 4096,
-        "use_for": ["log_analysis", "email_summary", "moderate_reasoning"],
-        "cost_per_1k": 0.001,
+        "use_for": ["log_analysis", "email_summary", "moderate_reasoning", "scoring"],
     },
     3: {
-        "name": "cloud_premium",
+        "name": "powerful",      # Groq primary, Ollama last-resort
         "max_tokens": 8192,
-        "use_for": ["complex_analysis", "code_review", "planning", "security_audit"],
-        "cost_per_1k": 0.015,
+        "use_for": ["complex_analysis", "code_review", "planning", "news_synthesis", "security_audit"],
     },
 }
 
@@ -40,6 +45,17 @@ class ModelRegistry:
         self.active_provider = provider
         self.models = self._build_model_chain()
 
+    @staticmethod
+    def soldier_model_id() -> str:
+        """Canonical model string for the soldier endpoint (openai-compat prefix)."""
+        return f"openai/{settings.soldier_model}" if settings.soldier_model else ""
+
+    @staticmethod
+    def is_soldier_model(model: str) -> bool:
+        """True when this model string belongs to the soldier endpoint."""
+        sid = ModelRegistry.soldier_model_id()
+        return bool(sid) and model == sid
+
     def _build_model_chain(self) -> Dict[int, List[str]]:
         """Build model chains based on active provider strategy."""
         self.local_model = f"ollama/{settings.ollama_model}"
@@ -47,6 +63,7 @@ class ModelRegistry:
         openrouter_model = f"openrouter/{settings.openrouter_model}"
         anthropic_fast = f"anthropic/{settings.anthropic_model_fast}"
         anthropic_premium = f"anthropic/{settings.anthropic_model_premium}"
+        soldier_model = self.soldier_model_id()  # "" when not configured
 
         # 1. Force Local
         if self.active_provider == "local":
@@ -55,6 +72,13 @@ class ModelRegistry:
                 2: [self.local_model],
                 3: [self.local_model]
             }
+
+        # 1b. Force Soldier (self-hosted OpenAI-compat endpoint)
+        if self.active_provider == "soldier":
+            if soldier_model:
+                return {1: [soldier_model], 2: [soldier_model], 3: [soldier_model]}
+            # Soldier not configured — fall through to auto
+            pass
 
         # 2. Force Groq
         if self.active_provider == "groq":
@@ -112,6 +136,9 @@ class ModelRegistry:
         def provider_models_for_tier(provider: str, tier: int) -> List[str]:
             if provider == "local":
                 return [self.local_model]
+            if provider == "soldier" and soldier_model and settings.soldier_url:
+                # 35B model hosted on Salad.cloud — capable at all tiers
+                return [soldier_model]
             if provider == "groq" and settings.groq_api_key:
                 return [groq_model]
             if provider == "anthropic" and settings.anthropic_api_key:

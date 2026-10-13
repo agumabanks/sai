@@ -68,6 +68,7 @@ async def run_skill_api(skill_name: str, body: SkillRunRequest, user: dict = Dep
         channel=body.channel or "web",
         sender_id=body.sender_id or user.get("email", "admin"),
         execution_mode="manual",
+        sender_role=user.get("role", "operator"),
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result)

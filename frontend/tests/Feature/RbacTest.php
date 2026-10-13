@@ -3,19 +3,12 @@
 namespace Tests\Feature;
 
 use App\Filament\Pages\AiBrainSettings;
-use App\Filament\Pages\AiToolPolicy;
 use App\Filament\Pages\AuditLogViewer;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\MarketingDashboard;
 use App\Filament\Pages\MemoryViewer;
 use App\Filament\Pages\SessionPolicy;
-use App\Filament\Pages\StrategicCommand;
-use App\Filament\Pages\SystemAssistant;
-use App\Filament\Pages\SystemDoctor;
-use App\Filament\Pages\SystemPlugins;
-use App\Filament\Pages\TenantControl;
 use App\Filament\Pages\UserManagement;
-use App\Filament\Pages\WorkflowRuns;
 use App\Models\User;
 use App\Services\SanaaEngineService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,30 +28,125 @@ class RbacTest extends TestCase
         {
             public function __construct() {}
 
-            public function getStatus(): array { return ['server' => ['cpu' => ['percent' => 10, 'status' => 'ok', 'cores' => 4, 'load_1m' => 1], 'memory' => ['percent' => 50, 'status' => 'ok', 'total_gb' => 16], 'disk' => ['percent' => 40, 'free_gb' => 100, 'status' => 'ok'], 'uptime_since' => '2026-03-10T00:00:00', 'services' => [], 'overall_status' => 'ok'], 'alerts' => ['unacknowledged' => 0], 'channels' => ['active_provider' => 'groq']]; }
-            public function getBrainConfig(): array { return ['provider' => 'auto']; }
-            public function getToolPolicy(): array { return ['policy' => ['enabled' => true, 'mode' => 'allowlist']]; }
-            public function getSkills(): array { return ['skills' => [], 'tools' => [], 'tool_policy' => []]; }
-            public function getSessionPolicy(): array { return ['policy' => []]; }
-            public function getSessions(int $limit = 100): array { return ['sessions' => []]; }
-            public function getDoctorReport(): array { return []; }
-            public function getWorkflowRuns(int $limit = 50): array { return []; }
-            public function getStrategicSignals(int $limit = 10): array { return []; }
-            public function getSystemWisdom(): array { return []; }
-            public function getMarketingMetrics(): array { return ['campaigns' => [], 'email' => [], 'social' => []]; }
-            public function getSocialAnalytics(): array { return ['platforms' => [], 'recent_posts' => []]; }
-            public function getScheduledContent(): array { return ['upcoming' => []]; }
-            public function getMemories(?string $search = null, ?string $category = null, int $limit = 50): array { return []; }
-            public function getLearningLogs(?string $type = null, int $limit = 50): array { return []; }
-            public function getTenants(): array { return []; }
-            public function getTenantHealth(): array { return ['overall_score' => 0, 'overall_status' => 'unknown', 'tenants' => []]; }
-            public function getAuditLogs(array $filters = [], int $page = 1, int $perPage = 50): array { return ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => 50, 'pages' => 0]; }
-            public function getAlerts(int $limit = 10): array { return []; }
-            public function getActivities(int $limit = 20): array { return []; }
-            public function getBriefings(int $limit = 20): array { return []; }
-            public function getLatestSignal(): array { return ['status' => 'none']; }
-            public function getWatchdogAdvisor(): array { return []; }
-            public function getLatestBriefingQa(): array { return []; }
+            public function getStatus(): array
+            {
+                return ['server' => ['cpu' => ['percent' => 10, 'status' => 'ok', 'cores' => 4, 'load_1m' => 1], 'memory' => ['percent' => 50, 'status' => 'ok', 'total_gb' => 16], 'disk' => ['percent' => 40, 'free_gb' => 100, 'status' => 'ok'], 'uptime_since' => '2026-03-10T00:00:00', 'services' => [], 'overall_status' => 'ok'], 'alerts' => ['unacknowledged' => 0], 'channels' => ['active_provider' => 'groq']];
+            }
+
+            public function getBrainConfig(): array
+            {
+                return ['provider' => 'auto'];
+            }
+
+            public function getToolPolicy(): array
+            {
+                return ['policy' => ['enabled' => true, 'mode' => 'allowlist']];
+            }
+
+            public function getSkills(): array
+            {
+                return ['skills' => [], 'tools' => [], 'tool_policy' => []];
+            }
+
+            public function getSessionPolicy(): array
+            {
+                return ['policy' => []];
+            }
+
+            public function getSessions(int $limit = 100): array
+            {
+                return ['sessions' => []];
+            }
+
+            public function getDoctorReport(): array
+            {
+                return [];
+            }
+
+            public function getWorkflowRuns(int $limit = 50): array
+            {
+                return [];
+            }
+
+            public function getStrategicSignals(int $limit = 10): array
+            {
+                return [];
+            }
+
+            public function getSystemWisdom(): array
+            {
+                return [];
+            }
+
+            public function getMarketingMetrics(): array
+            {
+                return ['campaigns' => [], 'email' => [], 'social' => []];
+            }
+
+            public function getSocialAnalytics(): array
+            {
+                return ['platforms' => [], 'recent_posts' => []];
+            }
+
+            public function getScheduledContent(): array
+            {
+                return ['upcoming' => []];
+            }
+
+            public function getMemories(?string $search = null, ?string $category = null, int $limit = 50): array
+            {
+                return [];
+            }
+
+            public function getLearningLogs(?string $type = null, int $limit = 50): array
+            {
+                return [];
+            }
+
+            public function getTenants(): array
+            {
+                return [];
+            }
+
+            public function getTenantHealth(): array
+            {
+                return ['overall_score' => 0, 'overall_status' => 'unknown', 'tenants' => []];
+            }
+
+            public function getAuditLogs(array $filters = [], int $page = 1, int $perPage = 50): array
+            {
+                return ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => 50, 'pages' => 0];
+            }
+
+            public function getAlerts(int $limit = 10): array
+            {
+                return [];
+            }
+
+            public function getActivities(int $limit = 20): array
+            {
+                return [];
+            }
+
+            public function getBriefings(int $limit = 20): array
+            {
+                return [];
+            }
+
+            public function getLatestSignal(): array
+            {
+                return ['status' => 'none'];
+            }
+
+            public function getWatchdogAdvisor(): array
+            {
+                return [];
+            }
+
+            public function getLatestBriefingQa(): array
+            {
+                return [];
+            }
         });
     }
 

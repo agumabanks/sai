@@ -2,6 +2,11 @@ name: daily_triage
 version: "1.0.0"
 description: Daily system health triage — checks all services, scans logs, and emits summary
 
+triggers:
+  - type: cron
+    schedule: "0 */4 * * *"
+
+
 args:
   severity:
     type: string

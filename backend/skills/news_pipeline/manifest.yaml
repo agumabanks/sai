@@ -1,0 +1,14 @@
+name: news_pipeline
+version: "1.0.0"
+description: Inspect the news/briefing pipeline (DB briefings, RSS feeds, SMTP, recipients).
+permissions: [network, database]
+requires_approval: false
+timeout: 30
+tags: [news, briefing, newsletter, email]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: Action to perform (briefing_status, feed_check, newsletter_status, send_now)
+    required: true
+    enum: [briefing_status, feed_check, newsletter_status, send_now]

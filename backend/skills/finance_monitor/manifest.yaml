@@ -1,0 +1,23 @@
+name: finance_monitor
+version: "1.0.0"
+description: Cross-tenant monitoring for Sanaa Finance — metrics, failed jobs, queue health, scheduler status, arrears alerts, SMS credits, and portfolio overview
+permissions: [shell, network]
+requires_approval: false
+timeout: 60
+tags: [monitoring, finance, tenant, operations]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action: overview, failed_jobs, queue_health, scheduler_check, arrears, sms_credits, metrics, fix_failed_jobs, daily_summary, escalate_arrears, risk_score, anomaly_detection"
+    required: true
+    enum: [overview, failed_jobs, queue_health, scheduler_check, arrears, sms_credits, metrics, fix_failed_jobs, daily_summary, escalate_arrears, risk_score, anomaly_detection]
+  - name: tenant
+    type: string
+    description: "Specific tenant domain (e.g. bukuya.sanaa.ug). If omitted, checks all tenants."
+    required: false
+  - name: limit
+    type: integer
+    description: "Limit results (for failed_jobs, arrears, etc.)"
+    required: false
+    default: 20

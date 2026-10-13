@@ -6,8 +6,8 @@ use App\Services\SanaaEngineService;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -17,11 +17,15 @@ class AiToolPolicy extends Page implements HasForms
     use InteractsWithForms;
 
     protected static ?string $navigationIcon = 'heroicon-o-shield-check';
-    protected static ?string $navigationGroup = 'Intelligence';
-    protected static ?int $navigationSort = 2;
+
+    protected static ?string $navigationGroup = 'Skills Lab';
+
+    protected static ?int $navigationSort = 3;
+
     protected static string $view = 'filament.pages.ai-tool-policy';
 
     public ?array $data = [];
+
     public array $skills = [];
 
     public function mount(): void
@@ -44,14 +48,14 @@ class AiToolPolicy extends Page implements HasForms
         $this->skills = $skillsPayload['skills'] ?? [];
 
         $this->form->fill([
-            'enabled' => (bool)($policy['enabled'] ?? true),
-            'mode' => (string)($policy['mode'] ?? 'allowlist'),
+            'enabled' => (bool) ($policy['enabled'] ?? true),
+            'mode' => (string) ($policy['mode'] ?? 'allowlist'),
             'allow' => implode(',', $policy['allow'] ?? []),
             'deny' => implode(',', $policy['deny'] ?? []),
             'groups_allow' => implode(',', $policy['groups']['allow'] ?? []),
             'groups_deny' => implode(',', $policy['groups']['deny'] ?? []),
-            'by_provider_json' => json_encode($policy['by_provider'] ?? new \stdClass(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            'by_channel_json' => json_encode($policy['by_channel'] ?? new \stdClass(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            'by_provider_json' => json_encode($policy['by_provider'] ?? new \stdClass, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            'by_channel_json' => json_encode($policy['by_channel'] ?? new \stdClass, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
         ]);
     }
 
@@ -101,12 +105,12 @@ class AiToolPolicy extends Page implements HasForms
         $state = $this->form->getState();
         $engine = app(SanaaEngineService::class);
 
-        $byProvider = json_decode((string)($state['by_provider_json'] ?? '{}'), true);
-        $byChannel = json_decode((string)($state['by_channel_json'] ?? '{}'), true);
+        $byProvider = json_decode((string) ($state['by_provider_json'] ?? '{}'), true);
+        $byChannel = json_decode((string) ($state['by_channel_json'] ?? '{}'), true);
 
         $payload = [
-            'enabled' => (bool)($state['enabled'] ?? true),
-            'mode' => (string)($state['mode'] ?? 'allowlist'),
+            'enabled' => (bool) ($state['enabled'] ?? true),
+            'mode' => (string) ($state['mode'] ?? 'allowlist'),
             'allow' => $this->csvToArray($state['allow'] ?? ''),
             'deny' => $this->csvToArray($state['deny'] ?? ''),
             'groups' => [
@@ -121,20 +125,22 @@ class AiToolPolicy extends Page implements HasForms
         if (($res['status'] ?? null) === 'success') {
             Notification::make()->title('Tool policy updated')->success()->send();
             $this->reload();
+
             return;
         }
-        Notification::make()->title('Failed to update tool policy')->body((string)($res['error'] ?? 'Unknown error'))->danger()->send();
+        Notification::make()->title('Failed to update tool policy')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
     }
 
     public function toggleSkill(string $skill, bool $enabled): void
     {
         $engine = app(SanaaEngineService::class);
         $res = $engine->setSkillEnabled($skill, $enabled);
-        if (!empty($res['error'])) {
-            Notification::make()->title('Skill toggle failed')->body((string)$res['error'])->danger()->send();
+        if (! empty($res['error'])) {
+            Notification::make()->title('Skill toggle failed')->body((string) $res['error'])->danger()->send();
+
             return;
         }
-        Notification::make()->title("Skill {$skill} " . ($enabled ? 'enabled' : 'disabled'))->success()->send();
+        Notification::make()->title("Skill {$skill} ".($enabled ? 'enabled' : 'disabled'))->success()->send();
         $this->reload();
     }
 
@@ -142,8 +148,9 @@ class AiToolPolicy extends Page implements HasForms
     {
         $engine = app(SanaaEngineService::class);
         $res = $engine->setSkillExposure($skill, $exposure);
-        if (!empty($res['error'])) {
-            Notification::make()->title('Exposure update failed')->body((string)$res['error'])->danger()->send();
+        if (! empty($res['error'])) {
+            Notification::make()->title('Exposure update failed')->body((string) $res['error'])->danger()->send();
+
             return;
         }
         Notification::make()->title("Exposure updated: {$skill}")->success()->send();

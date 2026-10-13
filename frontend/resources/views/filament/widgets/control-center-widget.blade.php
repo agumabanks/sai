@@ -1,121 +1,103 @@
-<x-filament-widgets::widget>
-    <div class="relative overflow-hidden bg-white/[0.04] dark:bg-[#1c1c1e]/40 backdrop-blur-[40px] backdrop-saturate-[180%] rounded-[32px] xl:rounded-[40px] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.3)] border border-white/[0.08]">
-        
-        <div class="relative z-10 flex flex-col gap-4">
-            {{-- Top section: 2 columns --}}
-            <div class="grid grid-cols-1 sm:grid-cols-[1.1fr_1fr] gap-3">
-                {{-- Left Square: Connectivity block --}}
-                <div class="bg-white/[0.06] border border-white/[0.08] rounded-[20px] p-4 flex flex-col gap-3 shadow-sm hover:bg-white/[0.08] transition-colors">
-                    {{-- Network / Wi-Fi --}}
-                    <div class="flex items-center gap-3">
-                        <div class="w-[34px] h-[34px] shrink-0 rounded-full bg-[#0a84ff] flex items-center justify-center text-white shadow-[0_0_12px_rgba(10,132,255,0.4)]">
-                            <x-heroicon-s-wifi class="w-[18px] h-[18px]" />
-                        </div>
-                        <div class="leading-tight flex-1">
-                            <div class="text-[13px] font-semibold text-white/95">Network Link</div>
-                            <div class="text-[11px] text-white/50 font-medium">Sanaa-Connect-5G</div>
-                        </div>
-                    </div>
-                    
-                    {{-- Bluetooth / Devices --}}
-                    <div class="flex items-center gap-3">
-                        <div class="w-[34px] h-[34px] shrink-0 rounded-full bg-[#0a84ff] flex items-center justify-center text-white shadow-[0_0_12px_rgba(10,132,255,0.4)]">
-                            <svg class="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24"><path d="M17.71,7.71L12,2V22L17.71,16.29L13.41,12L17.71,7.71M12,5.83L14.47,8.31L12,10.78V5.83M12,18.17L14.47,15.69L12,13.22V18.17Z" /></svg>
-                        </div>
-                        <div class="leading-tight flex-1">
-                            <div class="text-[13px] font-semibold text-white/95">Local Edge Nodes</div>
-                            <div class="text-[11px] text-white/50 font-medium">3 Devices Linked</div>
-                        </div>
-                    </div>
+<x-filament-widgets::widget class="h-full">
+    <div class="relative overflow-hidden rounded-2xl bg-white/[0.04] backdrop-blur-[40px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.25)] border border-white/[0.08] h-full flex flex-col">
+        <div class="relative z-10 space-y-5 flex-1 flex flex-col">
 
-                    {{-- AirDrop / Neural Link --}}
-                    <div class="flex items-center gap-3">
-                        <div class="w-[34px] h-[34px] shrink-0 rounded-full bg-[#0a84ff] flex items-center justify-center text-white shadow-[0_0_12px_rgba(10,132,255,0.4)]">
-                            <x-heroicon-s-signal class="w-[18px] h-[18px]" />
-                        </div>
-                        <div class="leading-tight flex-1">
-                            <div class="text-[13px] font-semibold text-white/95">Neural Link V4</div>
-                            <div class="text-[11px] text-white/50 font-medium">Brain Synced</div>
-                        </div>
-                    </div>
-                </div>
-
-                {{-- Right Top: 3 blocks --}}
-                <div class="flex flex-col gap-3">
-                    {{-- Focus / Sleep -> Autonomous Healer --}}
-                    <button wire:click="toggleHealer" class="bg-white/[0.06] border border-white/[0.08] rounded-[20px] p-3.5 flex items-center gap-3 shadow-sm hover:bg-white/[0.08] transition-colors focus:outline-none">
-                        <div class="w-[34px] h-[34px] shrink-0 rounded-full bg-[#5e5ce6] flex items-center justify-center text-white shadow-[0_0_12px_rgba(94,92,230,0.4)]">
-                            <x-heroicon-s-moon class="w-[18px] h-[18px]" />
-                        </div>
-                        <div class="leading-tight text-left">
-                            <div class="text-[13px] font-semibold text-white/95">Autonomous Healer</div>
-                            <div class="text-[11px] text-white/50 font-medium">On</div>
-                        </div>
-                    </button>
-
-                    {{-- 2 small squares --}}
-                    <div class="grid grid-cols-2 gap-3 flex-1 min-h-0">
-                        {{-- Active Brain --}}
-                        <div class="bg-white/[0.06] border border-white/[0.08] rounded-[20px] p-3 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-white/[0.1] transition-colors shadow-sm">
-                            <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
-                                <x-heroicon-s-cpu-chip class="w-[18px] h-[18px]" />
-                            </div>
-                            <div class="text-[11px] font-medium text-white/80 text-center leading-tight">Brain<br/>Provider</div>
-                        </div>
-                        {{-- Intelligence Mode --}}
-                        <div class="bg-white/[0.06] border border-white/[0.08] rounded-[20px] p-3 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-white/[0.1] transition-colors shadow-sm">
-                            <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
-                                <x-heroicon-s-sparkles class="w-[18px] h-[18px]" />
-                            </div>
-                            <div class="text-[11px] font-medium text-white/80 text-center leading-tight">Intelligence<br/>Mode</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Slider 1: Display Equivalent --}}
-            <div class="w-full h-[38px] bg-white/[0.06] border border-white/[0.08] rounded-[14px] relative overflow-hidden shadow-sm">
-                <div class="absolute top-0 left-0 bottom-0 bg-white/80 w-[70%] rounded-[14px]"></div>
-                <div class="absolute left-3 top-0 bottom-0 flex items-center mix-blend-difference">
-                    <x-heroicon-s-sun class="w-[16px] h-[16px] text-white/60" />
-                </div>
-            </div>
-
-            {{-- Slider 2: Sound Equivalent --}}
-            <div class="w-full h-[38px] bg-white/[0.06] border border-white/[0.08] rounded-[14px] relative overflow-hidden shadow-sm">
-                <div class="absolute top-0 left-0 bottom-0 bg-white/80 w-[45%] rounded-[14px]"></div>
-                <div class="absolute left-3 top-0 bottom-0 flex items-center mix-blend-difference">
-                    <x-heroicon-s-speaker-wave class="w-[16px] h-[16px] text-white/60" />
-                </div>
-            </div>
-
-            {{-- Now Playing Equivalent --}}
-            <div class="bg-white/[0.06] border border-white/[0.08] rounded-[20px] p-3.5 flex items-center justify-between shadow-sm hover:bg-white/[0.08] transition-colors cursor-pointer">
+            <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
-                    <div class="w-[42px] h-[42px] rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-[0_2px_10px_rgba(0,0,0,0.2)]">
-                        <x-sanaa-logo class="w-5 h-5 text-white/90" />
+                    <div class="w-9 h-9 rounded-xl bg-[#5e5ce6]/15 border border-[#5e5ce6]/25 flex items-center justify-center">
+                        <x-heroicon-m-command-line class="w-4 h-4 text-[#5e5ce6]" />
                     </div>
-                    <div class="leading-tight">
-                        <div class="text-[13px] font-semibold text-white/95">Analyzing System Pulse</div>
-                        <div class="text-[11px] text-white/50 font-medium mt-0.5">Sanaa Strategic Command</div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-white/90 tracking-tight">Control Center</h3>
+                        <p class="text-[10px] font-medium text-white/40 uppercase tracking-wider">System toggles & actions</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-4 text-white/70">
-                    <x-heroicon-s-play class="w-[22px] h-[22px] hover:text-white transition-colors" />
-                    <x-heroicon-s-forward class="w-[20px] h-[20px] opacity-40 hover:opacity-100 transition-colors" />
+                <div class="flex items-center gap-2 text-[10px] text-white/45">
+                    <span>CPU {{ $metrics['cpu'] ?? 0 }}%</span>
+                    <span>·</span>
+                    <span>RAM {{ $metrics['memory'] ?? 0 }}%</span>
+                    <span>·</span>
+                    <span>{{ $metrics['alerts'] ?? 0 }} alerts</span>
                 </div>
             </div>
-            
-            {{-- Extra Bottom Actions --}}
-            <div class="flex items-center gap-4 px-1 pb-1">
-                <button wire:click="triggerScan" class="w-[34px] h-[34px] rounded-full bg-white/[0.08] border border-white/[0.1] flex items-center justify-center hover:bg-white/[0.15] transition-colors cursor-pointer shadow-sm group">
-                    <x-heroicon-s-shield-check class="w-[16px] h-[16px] text-white/80 group-hover:text-white" />
-                </button>
-                <button wire:click="triggerBriefing" class="w-[34px] h-[34px] rounded-full bg-white/[0.08] border border-white/[0.1] flex items-center justify-center hover:bg-white/[0.15] transition-colors cursor-pointer shadow-sm group">
-                    <x-heroicon-s-newspaper class="w-[16px] h-[16px] text-white/80 group-hover:text-white" />
-                </button>
+
+            <div class="space-y-2">
+                <p class="text-[10px] font-semibold text-white/40 uppercase tracking-widest">Active Brain</p>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        wire:click="switchProvider('groq')"
+                        class="px-3 py-1.5 rounded-xl text-[11px] font-semibold tracking-wide transition-all duration-200 bg-[#5e5ce6]/20 border border-[#5e5ce6]/40 text-[#a5a3ff] shadow-[0_0_12px_rgba(94,92,230,0.15)]"
+                    >
+                        {{ strtoupper($currentProvider) }}
+                    </button>
+                    <span class="px-2.5 py-1 rounded-full border border-[#30d158]/20 bg-[#30d158]/10 text-[10px] font-bold uppercase tracking-wider text-[#30d158]">
+                        Online
+                    </span>
+                </div>
             </div>
-            
+
+            @if(!empty($quickLaunch))
+                <div class="space-y-2">
+                    <p class="text-[10px] font-semibold text-white/40 uppercase tracking-widest">Shortcuts</p>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach($quickLaunch as $shortcut)
+                            <a
+                                href="{{ ($shortcut['external'] ?? false) ? ($shortcut['url'] ?? '#') : ($shortcut['url'] ?? url('/')) }}"
+                                class="px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/70 hover:text-white/95 hover:bg-white/[0.08] transition"
+                                @if($shortcut['external'] ?? false) target="_blank" rel="noopener" @endif
+                            >
+                                {{ $shortcut['label'] }}
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            <div class="grid grid-cols-2 gap-3">
+                @foreach(($controlCenter['modules'] ?? []) as $module)
+                    @if(($module['action'] ?? null) === 'scan')
+                        <button wire:click="triggerScan" class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition-all group text-left">
+                            <div class="w-8 h-8 rounded-lg bg-[#30d158]/10 border border-[#30d158]/20 flex items-center justify-center">
+                                <x-heroicon-m-shield-check class="w-4 h-4 text-[#30d158]" />
+                            </div>
+                            <div>
+                                <div class="text-[12px] font-semibold text-white/80 group-hover:text-white/95">{{ $module['label'] }}</div>
+                                <div class="text-[10px] text-white/35">Audit platform</div>
+                            </div>
+                        </button>
+                    @elseif(($module['action'] ?? null) === 'briefing')
+                        <button wire:click="triggerBriefing" class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition-all group text-left">
+                            <div class="w-8 h-8 rounded-lg bg-[#0a84ff]/10 border border-[#0a84ff]/20 flex items-center justify-center">
+                                <x-heroicon-m-newspaper class="w-4 h-4 text-[#0a84ff]" />
+                            </div>
+                            <div>
+                                <div class="text-[12px] font-semibold text-white/80 group-hover:text-white/95">{{ $module['label'] }}</div>
+                                <div class="text-[10px] text-white/35">Generate report</div>
+                            </div>
+                        </button>
+                    @elseif(!empty($module['url']))
+                        <a href="{{ $module['url'] }}" class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.12] transition-all group">
+                            <div class="w-8 h-8 rounded-lg bg-[#a855f7]/10 border border-[#a855f7]/20 flex items-center justify-center">
+                                <x-heroicon-m-squares-2x2 class="w-4 h-4 text-[#a855f7]" />
+                            </div>
+                            <div>
+                                <div class="text-[12px] font-semibold text-white/80 group-hover:text-white/95">{{ $module['label'] }}</div>
+                                <div class="text-[10px] text-white/35">Open module</div>
+                            </div>
+                        </a>
+                    @endif
+                @endforeach
+            </div>
+
+            <div class="mt-auto pt-2 flex items-center gap-2">
+                <a href="{{ url('/') }}" target="_blank" rel="noopener" class="flex-1 text-center px-3 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-semibold text-white/70 hover:text-white/95 hover:bg-white/[0.07] transition">
+                    Open Sanaa OS
+                </a>
+                <a href="{{ route('filament.admin.pages.ai-brain-settings') }}" class="flex-1 text-center px-3 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-semibold text-white/70 hover:text-white/95 hover:bg-white/[0.07] transition">
+                    Settings
+                </a>
+            </div>
+
         </div>
     </div>
 </x-filament-widgets::widget>

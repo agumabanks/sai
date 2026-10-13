@@ -8,13 +8,19 @@ use Filament\Pages\Page;
 
 class ApiDocs extends Page
 {
-    protected static ?string $navigationIcon  = 'heroicon-o-document-text';
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+
     protected static ?string $navigationGroup = 'System';
-    protected static ?int    $navigationSort  = 25;
-    protected static string  $view            = 'filament.pages.api-docs';
-    protected static ?string $title           = 'API Documentation';
+
+    protected static ?int $navigationSort = 25;
+
+    protected static string $view = 'filament.pages.api-docs';
+
+    protected static ?string $title = 'API Documentation';
+
     protected static ?string $navigationLabel = 'API Docs';
-    protected static ?string $slug            = 'api-docs';
+
+    protected static ?string $slug = 'api-docs';
 
     // ── Page state ────────────────────────────────────────────────────────
 
@@ -93,6 +99,7 @@ class ApiDocs extends Page
         foreach ($this->getPaths() as $methods) {
             $count += count($methods);
         }
+
         return $count;
     }
 
@@ -102,14 +109,14 @@ class ApiDocs extends Page
     public function getMethodBadge(string $method): string
     {
         return match (strtoupper($method)) {
-            'GET'     => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
-            'POST'    => 'text-[#0a84ff] bg-[#0a84ff]/10 border-[#0a84ff]/20',
-            'PUT'     => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
-            'PATCH'   => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
-            'DELETE'  => 'text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20',
-            'HEAD'    => 'text-[#bf5af2] bg-[#bf5af2]/10 border-[#bf5af2]/20',
+            'GET' => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
+            'POST' => 'text-[#0a84ff] bg-[#0a84ff]/10 border-[#0a84ff]/20',
+            'PUT' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
+            'PATCH' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
+            'DELETE' => 'text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20',
+            'HEAD' => 'text-[#bf5af2] bg-[#bf5af2]/10 border-[#bf5af2]/20',
             'OPTIONS' => 'text-white/40 bg-white/5 border-white/10',
-            default   => 'text-white/40 bg-white/5 border-white/10',
+            default => 'text-white/40 bg-white/5 border-white/10',
         };
     }
 
@@ -119,6 +126,7 @@ class ApiDocs extends Page
     public function isExpanded(string $path, string $method): bool
     {
         $key = "{$path}.{$method}";
+
         return $this->expandedEndpoints[$key] ?? false;
     }
 
@@ -137,6 +145,7 @@ class ApiDocs extends Page
                 }
             }
         }
+
         return array_keys($tags);
     }
 

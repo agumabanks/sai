@@ -1,0 +1,35 @@
+name: site_500_healer
+version: "1.0.0"
+description: >
+  Detects HTTP 500 errors across all Sanaa sites, diagnoses the root cause by
+  parsing nginx and Laravel error logs, then attempts auto-remediation
+  (cache clear, permission fix, php-fpm reload) and reports the outcome.
+  Knows about the full /var/www project layout and farzone.sanaa.co specifically.
+permissions: [shell, filesystem, network]
+requires_approval: false
+timeout: 120
+tags: [monitoring, healing, laravel, php, 500, errors, farzone]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: >
+      scan: check all sites for 500s and show error log tails.
+      heal: attempt auto-fix for a specific site (or all).
+      check: HTTP-check a single domain.
+    required: true
+    enum: [scan, heal, check]
+  - name: domain
+    type: string
+    description: "Specific domain to target (e.g. farzone.sanaa.co). Omit for all sites."
+    required: false
+  - name: send_report
+    type: boolean
+    description: Email a report after healing (default false).
+    required: false
+    default: false
+  - name: recipient
+    type: string
+    description: Email address to send the report to.
+    required: false
+    default: ""

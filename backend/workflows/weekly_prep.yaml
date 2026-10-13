@@ -1,0 +1,37 @@
+name: weekly_prep
+version: "1.0.0"
+description: "Pre-fetches comprehensive weekly analytics and intelligence every Monday morning to anticipate admin needs."
+triggers:
+  - type: cron
+    schedule: "30 4 * * 1"  # 4:30 AM UTC on Monday (7:30 AM EAT)
+
+steps:
+  - id: get_metrics
+    action: skill
+    description: "Fetch comprehensive analytics for all finance tenants"
+    params:
+      skill: finance_monitor
+      args:
+        action: metrics
+        
+  - id: generate_analysis
+    action: llm
+    description: "Synthesize weekly analytical report"
+    params:
+      prompt: |
+        You are Sanaa AI Intelligence. Look at these comprehensive metrics pulled on a Monday morning:
+        
+        FINANCE METRICS:
+        {{ steps.get_metrics.output }}
+        
+        Write a robust week-start executive summary. Highlight platform growth, largest arrear risks, and operational focus areas for the week ahead.
+      complexity: high
+    depends_on: [get_metrics]
+
+  - id: pre_fetch_delivery
+    action: notify
+    description: "Deliver the prepared weekly insights via Email"
+    params:
+      channel: web
+      message: "{{ steps.generate_analysis.output }}"
+    depends_on: [generate_analysis]

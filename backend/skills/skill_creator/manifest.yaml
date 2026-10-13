@@ -1,0 +1,19 @@
+name: skill_creator
+description: "Create new Sanaa AI skills at runtime from a natural language description (AI writes the code + auto hot-reloads), list all registered skills, or hot-reload an existing skill without a service restart."
+version: "2.0.0"
+category: "meta"
+tags: ["skill", "create", "builder", "meta", "hot_reload", "list", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: create (AI writes code + auto-reload), list_skills, hot_reload"
+    required: true
+    enum: ["create", "list_skills", "hot_reload"]
+  skill_name:
+    type: string
+    description: "Snake_case name for the skill (e.g. 'binance_price')"
+    required: false
+  skill_description:
+    type: string
+    description: "Natural language description of what the new skill should do (for 'create')"
+    required: false

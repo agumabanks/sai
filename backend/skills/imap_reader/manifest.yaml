@@ -1,0 +1,23 @@
+name: imap_reader
+description: Check the user's IMAP email inbox, read messages, and categorize them as Urgent, Spam, or General.
+version: "1.0.0"
+author: "Sanaa AI Core"
+category: "communication"
+permissions:
+  - "read_email"
+requires_approval: false
+tags:
+  - "email"
+  - "inbox"
+  - "monitoring"
+  - "jarvis"
+parameters:
+  action:
+    type: "string"
+    description: "The action to perform (e.g., 'check_inbox', 'read_email', 'get_summary')"
+    required: true
+    enum: ["check_inbox"]
+  limit:
+    type: "integer"
+    description: "Number of recent emails to fetch (default 5)"
+    required: false

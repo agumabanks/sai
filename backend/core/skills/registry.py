@@ -153,6 +153,44 @@ class SkillRegistry:
         except Exception as e:
             logger.error(f"Failed to record skill run: {e}")
 
+        # Write to brain memory (skill → brain bridge)
+        try:
+            from core.database import AsyncSessionLocal as MemSession
+            from sqlalchemy import text as mem_text
+            import json as mem_json
+
+            mem_content = f"[Skill] {name}: {'OK' if result.success else 'FAIL'} in {result.execution_time_ms}ms"
+            if result.output:
+                key_info = result.output[:200].replace('\n', ' ').strip()
+                if len(key_info) > 10:
+                    mem_content += f' | {key_info}'
+
+            async with MemSession() as mem_session:
+                await mem_session.execute(
+                    mem_text("""
+                        INSERT INTO agent_memory
+                            (content, category, source, confidence, metadata,
+                             created_at, updated_at, access_count, verified)
+                        VALUES
+                            (:content, 'skill_execution', 'skill_runner', 0.85, :meta,
+                             NOW(), NOW(), 0, false)
+                    """),
+                    {
+                        "content": mem_content,
+                        "meta": mem_json.dumps({
+                            "skill": name,
+                            "success": result.success,
+                            "duration_ms": result.execution_time_ms,
+                            "triggered_by": f"{context.channel}:{context.sender_id}",
+                            "has_error": bool(result.error),
+                            "type": "skill_run",
+                        }),
+                    },
+                )
+                await mem_session.commit()
+        except Exception as e:
+            logger.debug(f"Skill→brain bridge failed (non-critical): {e}")
+
         # Audit log
         try:
             await AuditLog.log(

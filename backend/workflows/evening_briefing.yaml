@@ -1,0 +1,71 @@
+name: evening_briefing
+version: "1.0.0"
+description: "Delivers an end-of-day report (6 PM EAT / 3 PM UTC) summarizing activities, anomalies, and pending approvals."
+triggers:
+  - type: cron
+    schedule: "0 15 * * *"
+
+steps:
+  - id: get_health
+    action: skill
+    description: "End of day server health check"
+    params:
+      skill: server_health
+      args:
+        metric: all
+
+  - id: get_finance_anomalies
+    action: skill
+    description: "Check for finance anomalies"
+    params:
+      skill: finance_monitor
+      args:
+        action: anomaly_detection
+
+  - id: get_arrears
+    action: skill
+    description: "Check for escalated arrears"
+    params:
+      skill: finance_monitor
+      args:
+        action: escalate_arrears
+
+  - id: get_finance_risk
+    action: skill
+    description: "Check finance portfolio risk"
+    params:
+      skill: finance_monitor
+      args:
+        action: risk_score
+
+  - id: summarize
+    action: llm
+    description: "Synthesize the evening briefing"
+    params:
+      prompt: |
+        You are Sanaa AI reporting the Evening Briefing for the admin (Banks). 
+        Format this nicely with emojis. Make it readable for WhatsApp.
+        
+        Server Health:
+        {{ steps.get_health.output }}
+        
+        Finance Anomalies:
+        {{ steps.get_finance_anomalies.output }}
+        
+        Arrears Escalations Needed:
+        {{ steps.get_arrears.output }}
+        
+        Portfolio Risk:
+        {{ steps.get_finance_risk.output }}
+        
+        Include a closing remark wishing them a good evening.
+      complexity: medium
+    depends_on: [get_health, get_finance_anomalies, get_arrears, get_finance_risk]
+
+  - id: notify_admin
+    action: notify
+    description: "Send evening briefing via WhatsApp and Email"
+    params:
+      channel: whatsapp
+      message: "{{ steps.summarize.output }}"
+    depends_on: [summarize]

@@ -1,0 +1,48 @@
+name: project_manager
+description: "Create, list, filter, complete, and delete project tasks/tickets with priority, due dates, and tags. Can auto-generate tasks from strategic news insights."
+version: "2.0.0"
+category: "productivity"
+tags: ["tasks", "project", "todo", "ticket", "notion", "trello", "insight", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: create, list, complete, delete, filter, from_insight"
+    required: true
+    enum: ["create", "list", "complete", "delete", "filter", "from_insight"]
+  title:
+    type: string
+    description: "Task title (for 'create')"
+    required: false
+  description:
+    type: string
+    description: "Detailed description of the task"
+    required: false
+  priority:
+    type: string
+    description: "Priority: low, medium, high, critical"
+    required: false
+    enum: ["low", "medium", "high", "critical"]
+  due_date:
+    type: string
+    description: "Due date as ISO string or human date e.g. '2026-03-01'"
+    required: false
+  tags:
+    type: string
+    description: "Comma-separated tags e.g. 'fx,payment,urgent'"
+    required: false
+  task_id:
+    type: integer
+    description: "Task ID (for 'complete', 'delete')"
+    required: false
+  status:
+    type: string
+    description: "Filter by status: open, done (for 'filter')"
+    required: false
+  insight:
+    type: string
+    description: "Strategic news/insight text to convert into a task (for 'from_insight')"
+    required: false
+  limit:
+    type: integer
+    description: "Max tasks to return (default 20)"
+    required: false

@@ -1,0 +1,19 @@
+name: session_logs
+description: "Advanced audit and reflection system. Search conversation history, view recent skill/tool calls with timing, analyze recent errors with AI-powered fix suggestions, and get LLM cost breakdowns."
+version: "2.0.0"
+category: "meta"
+tags: ["logs", "history", "audit", "session", "memory", "tool_calls", "error_analysis", "reflection", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: recent, search, cost_summary, tool_calls, error_analysis"
+    required: true
+    enum: ["recent", "search", "cost_summary", "tool_calls", "error_analysis"]
+  query:
+    type: string
+    description: "Search term (for 'search' and 'error_analysis' actions)"
+    required: false
+  limit:
+    type: integer
+    description: "Max results to return (default 10)"
+    required: false

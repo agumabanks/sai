@@ -31,6 +31,7 @@ class TenantControlTest extends TestCase
                         'type' => 'finance',
                         'url' => 'https://finance.sanaa.ug',
                         'status' => 'active',
+                        'health_status' => 'healthy',
                         'health_score' => 95.0,
                         'last_checked' => '2026-03-14T10:00:00',
                         'config' => [],
@@ -40,7 +41,8 @@ class TenantControlTest extends TestCase
                         'name' => 'soko',
                         'type' => 'ecommerce',
                         'url' => 'https://soko.sanaa.ug',
-                        'status' => 'degraded',
+                        'status' => 'active',
+                        'health_status' => 'degraded',
                         'health_score' => 60.0,
                         'last_checked' => '2026-03-14T09:55:00',
                         'config' => [],
@@ -51,6 +53,7 @@ class TenantControlTest extends TestCase
                         'type' => 'email',
                         'url' => 'https://mail.sanaa.ug',
                         'status' => 'active',
+                        'health_status' => 'healthy',
                         'health_score' => 88.0,
                         'last_checked' => '2026-03-14T09:50:00',
                         'config' => [],
@@ -60,7 +63,8 @@ class TenantControlTest extends TestCase
                         'name' => 'kalamba.sanaa.ug',
                         'type' => 'finance',
                         'url' => 'https://kalamba.sanaa.ug',
-                        'status' => 'down',
+                        'status' => 'active',
+                        'health_status' => 'down',
                         'health_score' => 0.0,
                         'last_checked' => '2026-03-14T09:45:00',
                         'config' => [],
@@ -73,7 +77,12 @@ class TenantControlTest extends TestCase
                 return [
                     'overall_score' => 72.5,
                     'overall_status' => 'degraded',
-                    'tenants' => $this->getTenants(),
+                    'tenants' => [
+                        ['tenant_id' => 1, 'status' => 'healthy', 'health_score' => 95.0],
+                        ['tenant_id' => 2, 'status' => 'degraded', 'health_score' => 60.0],
+                        ['tenant_id' => 3, 'status' => 'healthy', 'health_score' => 88.0],
+                        ['tenant_id' => 4, 'status' => 'down', 'health_score' => 0.0],
+                    ],
                     'checked_at' => '2026-03-14T10:00:00',
                 ];
             }
@@ -92,7 +101,7 @@ class TenantControlTest extends TestCase
             {
                 return [
                     'tenant_id' => $id,
-                    'status' => 'active',
+                    'status' => 'healthy',
                     'health_score' => 95.0,
                     'response_time_ms' => 120,
                 ];
@@ -154,7 +163,7 @@ class TenantControlTest extends TestCase
 
         Livewire::actingAs($user)
             ->test(TenantControl::class)
-            ->assertSee('Active')
+            ->assertSee('Healthy')
             ->assertSee('Degraded')
             ->assertSee('Down');
     }

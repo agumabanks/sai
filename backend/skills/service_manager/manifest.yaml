@@ -1,0 +1,23 @@
+name: service_manager
+version: "1.0.0"
+description: Manage server services — start/stop/restart systemd units, PM2 apps, supervisor workers, Docker containers. Also handles SSL certificate renewal and nginx reload.
+permissions: [shell]
+requires_approval: true
+timeout: 120
+tags: [management, infrastructure, services, operations]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action to perform"
+    required: true
+    enum: [restart, stop, start, status, renew_ssl, reload_nginx, deploy_app, clear_cache]
+  - name: target
+    type: string
+    description: "Target service/app/domain (e.g. nginx, mysql, finance-worker, soko.sanaa.co)"
+    required: true
+  - name: manager
+    type: string
+    description: "Process manager type. Auto-detected if omitted."
+    required: false
+    enum: [systemd, pm2, supervisor, docker, laravel]

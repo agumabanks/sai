@@ -1,0 +1,28 @@
+name: code_quality
+description: "Run automated code quality sweeps: linting, formatting, dead code removal, unused imports, and test verification. Commits fixes separately by category and generates a summary report."
+version: "1.0.0"
+category: "development"
+tags: ["lint", "format", "quality", "cleanup", "dead-code", "imports", "ci"]
+parameters:
+  action:
+    type: string
+    description: "Action: sweep (full), lint, format, dead_code, unused_imports, report"
+    required: true
+    enum: ["sweep", "lint", "format", "dead_code", "unused_imports", "report"]
+  directory:
+    type: string
+    description: "Target directory to sweep (default: auto-detect project roots)"
+    required: false
+  auto_commit:
+    type: boolean
+    description: "Auto-commit fixes with categorized messages (default: false)"
+    required: false
+  dry_run:
+    type: boolean
+    description: "Preview changes without applying (default: false)"
+    required: false
+test_cases:
+  - name: "Report only"
+    args:
+      action: "report"
+    expect_success: true

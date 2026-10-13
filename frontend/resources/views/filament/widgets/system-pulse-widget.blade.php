@@ -1,98 +1,109 @@
 <x-filament-widgets::widget>
-    <div class="relative overflow-hidden rounded-[24px] bg-white/5 dark:bg-[#1c1c1e]/60 backdrop-blur-3xl backdrop-saturate-150 border border-black/5 dark:border-white/5 shadow-sm p-6 lg:p-8">
-        
+    <div class="relative overflow-hidden rounded-2xl glass-dark p-6 lg:p-7">
+
+        {{-- Ambient glow orb --}}
+        <div class="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full opacity-20"
+             style="background: radial-gradient(circle, hsla(234,89%,64%,0.6) 0%, transparent 70%);"></div>
+
         <div class="relative z-10">
-            {{-- Header Area --}}
-            <div class="flex items-center justify-between mb-8">
-                <div class="flex items-center gap-4">
-                    <div class="h-10 w-10 rounded-full flex items-center justify-center bg-white/10 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/5">
+
+            {{-- Header --}}
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="h-9 w-9 rounded-xl flex items-center justify-center"
+                         style="background: rgba(94,92,230,0.15); border: 1px solid rgba(94,92,230,0.25);">
                         <x-filament::icon
                             :icon="$this->getProviderIcon()"
-                            class="h-5 w-5 text-zinc-800 dark:text-zinc-200"
+                            class="h-4 w-4 text-indigo-400"
                         />
                     </div>
                     <div>
-                        <h2 class="text-[11px] font-semibold tracking-wide text-zinc-500 dark:text-zinc-400 uppercase">AI Core Processor</h2>
-                        <p class="text-xl font-medium tracking-tight text-zinc-900 dark:text-white">
+                        <p class="text-[10px] font-bold tracking-[0.12em] uppercase text-white/40">AI Core Processor</p>
+                        <p class="text-base font-semibold text-white/90 leading-tight">
                             {{ $data['brain_provider'] ?? 'System Offline' }}
                         </p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    @if($data['healer_active'] ?? false)
-                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#ff453a]/10 border border-[#ff453a]/20 text-[#ff453a] text-[11px] font-medium tracking-wide">
-                            <span class="relative flex h-2 w-2">
-                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff453a] opacity-75"></span>
-                              <span class="relative inline-flex rounded-full h-2 w-2 bg-[#ff453a]"></span>
-                            </span>
-                            Active Recovery
-                        </div>
-                    @else
-                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#30d158]/10 border border-[#30d158]/20 text-[#30d158] text-[11px] font-medium tracking-wide">
-                            <span class="h-1.5 w-1.5 rounded-full bg-[#30d158]"></span>
-                            All Systems Nominal
-                        </div>
-                    @endif
+                @if($data['healer_active'] ?? false)
+                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide"
+                         style="background: rgba(255,69,58,0.12); border: 1px solid rgba(255,69,58,0.25); color: #ff6b6b;">
+                        <span class="relative flex h-1.5 w-1.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff453a] opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#ff453a]"></span>
+                        </span>
+                        Active Recovery
+                    </div>
+                @else
+                    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide"
+                         style="background: rgba(48,209,88,0.10); border: 1px solid rgba(48,209,88,0.2); color: #34d399;">
+                        <span class="h-1.5 w-1.5 rounded-full bg-[#30d158]"></span>
+                        All Systems Nominal
+                    </div>
+                @endif
+            </div>
+
+            {{-- Resource Bars --}}
+            <div class="grid grid-cols-3 gap-5">
+
+                {{-- CPU — indigo --}}
+                @php $cpu = $data['cpu'] ?? 0; $cpuCrit = $cpu > 80; @endphp
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[11px] font-medium text-white/40 uppercase tracking-wide">CPU</span>
+                        <span class="text-sm font-semibold {{ $cpuCrit ? 'text-rose-400' : 'text-white/80' }}">{{ $cpu }}%</span>
+                    </div>
+                    <div class="h-1 w-full rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
+                        <div class="h-full rounded-full transition-all duration-700 ease-out"
+                             style="width: {{ $cpu }}%; background: {{ $cpuCrit ? 'linear-gradient(90deg, #f43f5e, #fb7185)' : 'linear-gradient(90deg, hsl(234,89%,58%), hsl(245,80%,68%))' }}; box-shadow: {{ $cpuCrit ? '0 0 8px -1px rgba(244,63,94,0.6)' : '0 0 8px -1px hsla(234,89%,64%,0.55)' }};"></div>
+                    </div>
+                </div>
+
+                {{-- RAM — purple --}}
+                @php $ram = $data['ram'] ?? 0; $ramCrit = $ram > 80; @endphp
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[11px] font-medium text-white/40 uppercase tracking-wide">Memory</span>
+                        <span class="text-sm font-semibold {{ $ramCrit ? 'text-rose-400' : 'text-white/80' }}">{{ $ram }}%</span>
+                    </div>
+                    <div class="h-1 w-full rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
+                        <div class="h-full rounded-full transition-all duration-700 ease-out"
+                             style="width: {{ $ram }}%; background: {{ $ramCrit ? 'linear-gradient(90deg, #f43f5e, #fb7185)' : 'linear-gradient(90deg, hsl(262,83%,60%), hsl(270,75%,68%))' }}; box-shadow: {{ $ramCrit ? '0 0 8px -1px rgba(244,63,94,0.6)' : '0 0 8px -1px hsla(262,83%,65%,0.55)' }};"></div>
+                    </div>
+                </div>
+
+                {{-- Disk — amber --}}
+                @php $disk = $data['disk'] ?? 0; $diskCrit = $disk > 90; @endphp
+                <div class="space-y-2">
+                    <div class="flex justify-between items-baseline">
+                        <span class="text-[11px] font-medium text-white/40 uppercase tracking-wide">Storage</span>
+                        <span class="text-sm font-semibold {{ $diskCrit ? 'text-rose-400' : 'text-white/80' }}">{{ $disk }}%</span>
+                    </div>
+                    <div class="h-1 w-full rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
+                        <div class="h-full rounded-full transition-all duration-700 ease-out"
+                             style="width: {{ $disk }}%; background: {{ $diskCrit ? 'linear-gradient(90deg, #f43f5e, #fb7185)' : 'linear-gradient(90deg, hsl(38,92%,48%), hsl(45,88%,58%))' }}; box-shadow: {{ $diskCrit ? '0 0 8px -1px rgba(244,63,94,0.6)' : '0 0 8px -1px hsla(38,92%,50%,0.45)' }};"></div>
+                    </div>
                 </div>
             </div>
 
-            {{-- Hardware Resource Metrics --}}
-            <div class="grid grid-cols-3 gap-8">
-                {{-- CPU --}}
-                <div class="space-y-2">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">CPU Load</span>
-                        <span class="text-sm font-medium @if(($data['cpu'] ?? 0) > 80) text-[#ff453a] @else text-zinc-900 dark:text-white @endif">{{ $data['cpu'] ?? 0 }}%</span>
-                    </div>
-                    <div class="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-zinc-800 dark:bg-white transition-all duration-700 ease-out" style="width: {{ $data['cpu'] ?? 0 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- RAM --}}
-                <div class="space-y-2">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Memory</span>
-                        <span class="text-sm font-medium @if(($data['ram'] ?? 0) > 80) text-[#ff453a] @else text-zinc-900 dark:text-white @endif">{{ $data['ram'] ?? 0 }}%</span>
-                    </div>
-                    <div class="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-zinc-800 dark:bg-white transition-all duration-700 ease-out" style="width: {{ $data['ram'] ?? 0 }}%"></div>
-                    </div>
-                </div>
-
-                {{-- DISK --}}
-                <div class="space-y-2">
-                    <div class="flex justify-between items-baseline">
-                        <span class="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Storage</span>
-                        <span class="text-sm font-medium @if(($data['disk'] ?? 0) > 90) text-[#ff453a] @else text-zinc-900 dark:text-white @endif">{{ $data['disk'] ?? 0 }}%</span>
-                    </div>
-                    <div class="h-1.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-zinc-800 dark:bg-white transition-all duration-700 ease-out" style="width: {{ $data['disk'] ?? 0 }}%"></div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Chronic Failures --}}
+            {{-- Critical Anomalies --}}
             @if(!empty($data['failures']))
-                <div class="mt-8 pt-6 border-t border-black/5 dark:border-white/10">
-                    <h3 class="text-[11px] font-medium text-[#ff453a] flex items-center gap-2 mb-4">
-                        Critical Anomalies
-                    </h3>
-                    <div class="space-y-3">
+                <div class="mt-6 pt-5 border-t border-white/[0.05]">
+                    <p class="text-[10px] font-bold tracking-[0.12em] uppercase text-rose-400/80 mb-3">Critical Anomalies</p>
+                    <div class="space-y-2">
                         @foreach($data['failures'] as $fail)
                             <div class="flex items-center justify-between">
-                                <span class="text-sm text-zinc-700 dark:text-zinc-300">
+                                <span class="text-[12px] text-white/60">
                                     {{ str_replace('_', ' ', str_replace('fail_count.', '', $fail['metric'])) }}
                                 </span>
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xs font-medium text-zinc-500">
-                                        {{ $fail['count'] }} incidents
-                                    </span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[11px] text-white/40">{{ $fail['count'] }}×</span>
                                     @if($fail['count'] >= ($data['thresholds']['t4'] ?? 6))
-                                        <span class="text-[10px] bg-[#ff453a] text-white px-2 py-0.5 rounded-full font-medium">SOS Triggered</span>
+                                        <span class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                                              style="background: rgba(255,69,58,0.2); color: #ff6b6b; border: 1px solid rgba(255,69,58,0.3);">SOS</span>
                                     @elseif($fail['count'] >= ($data['thresholds']['t3'] ?? 4))
-                                        <span class="text-[10px] bg-[#ff9f0a] text-white px-2 py-0.5 rounded-full font-medium">Load Shedding</span>
+                                        <span class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                                              style="background: rgba(255,159,10,0.15); color: #fbbf24; border: 1px solid rgba(255,159,10,0.25);">Shedding</span>
                                     @endif
                                 </div>
                             </div>
@@ -100,6 +111,7 @@
                     </div>
                 </div>
             @endif
+
         </div>
     </div>
 </x-filament-widgets::widget>

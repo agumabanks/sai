@@ -29,6 +29,8 @@ class SkillManifest:
     requires_approval: bool = False
     timeout: int = 30
     tags: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    test_cases: list[dict] = field(default_factory=list)
     parameters: list[SkillParameter] = field(default_factory=list)
     handler_module: str = "handler"  # Python module name within the skill directory
     path: str = ""                   # Absolute path to the skill directory
@@ -50,6 +52,7 @@ def parse_manifest(manifest_path: str) -> SkillManifest:
         requires_approval: false
         timeout: 30
         tags: [monitoring, infrastructure]
+        dependencies: [database_query]
         handler: handler  # Python module name (default: handler)
         parameters:
           - name: metric
@@ -111,6 +114,8 @@ def parse_manifest(manifest_path: str) -> SkillManifest:
         requires_approval=raw.get("requires_approval", False),
         timeout=raw.get("timeout", 30),
         tags=raw.get("tags", []),
+        dependencies=raw.get("dependencies", []),
+        test_cases=raw.get("test_cases", []),
         parameters=params,
         handler_module=raw.get("handler", "handler"),
         path=skill_dir,

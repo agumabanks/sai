@@ -13,7 +13,7 @@ async def track_usage(model: str, tier: int, usage, latency_ms: int):
     try:
         input_tokens = getattr(usage, "prompt_tokens", 0) or 0
         output_tokens = getattr(usage, "completion_tokens", 0) or 0
-        cost_per_1k = TIERS[tier]["cost_per_1k"]
+        cost_per_1k = TIERS.get(tier, {}).get("cost_per_1k", 0.0)
         cost = (input_tokens + output_tokens) / 1000 * cost_per_1k
 
         provider = model.split("/")[0] if "/" in model else "unknown"

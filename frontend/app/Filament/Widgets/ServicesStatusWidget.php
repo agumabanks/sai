@@ -14,7 +14,9 @@ class ServicesStatusWidget extends Widget
     protected static bool $isLazy = false;
 
     public array $services = [];
+
     public int $activeCount = 0;
+
     public int $totalCount = 0;
 
     public function mount()
@@ -39,13 +41,13 @@ class ServicesStatusWidget extends Widget
             ];
         }
 
-        $this->activeCount = count(array_filter($this->services, fn($s) => $s['active']));
+        $this->activeCount = count(array_filter($this->services, fn ($s) => $s['active']));
         $this->totalCount = count($this->services);
     }
 
     protected function formatServiceName(string $name): string
     {
-        return match($name) {
+        return match ($name) {
             'nginx' => 'Nginx',
             'php8.4-fpm' => 'PHP-FPM',
             'redis-server' => 'Redis',
@@ -57,7 +59,7 @@ class ServicesStatusWidget extends Widget
 
     public function getServiceIcon(string $name): string
     {
-        return match($name) {
+        return match ($name) {
             'nginx' => 'heroicon-m-globe-alt',
             'php8.4-fpm' => 'heroicon-m-code-bracket',
             'redis-server' => 'heroicon-m-bolt',

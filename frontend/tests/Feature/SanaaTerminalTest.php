@@ -18,7 +18,7 @@ class SanaaTerminalTest extends TestCase
             ->set('command', 'help')
             ->call('send')
             ->assertSet('isLoading', false)
-            ->assertSee('Sanaa Neural Link');
+            ->assertSee('Sanaa Chat');
     }
 
     public function test_status_command_returns_system_info(): void
@@ -27,6 +27,56 @@ class SanaaTerminalTest extends TestCase
             ->set('command', 'status')
             ->call('send')
             ->assertSet('isLoading', false);
+    }
+
+    public function test_groq_status_question_returns_direct_answer(): void
+    {
+        $mockEngine = Mockery::mock(SanaaEngineService::class);
+        $mockEngine->shouldReceive('getStatus')
+            ->once()
+            ->andReturn([
+                'channels' => [
+                    'active_provider' => 'groq',
+                    'active_model' => 'llama-3.1-8b-instant',
+                ],
+            ]);
+
+        $this->app->instance(SanaaEngineService::class, $mockEngine);
+
+        $component = Livewire::test(SanaaTerminal::class)
+            ->set('command', 'is groq on?')
+            ->call('send')
+            ->assertSet('isLoading', false);
+
+        $history = $component->get('history');
+        $lastAiMessage = collect($history)->where('type', 'ai')->last();
+
+        $this->assertStringContainsString('Groq is active', $lastAiMessage['text']);
+        $this->assertStringNotContainsString('USER:', $lastAiMessage['text']);
+        $this->assertStringNotContainsString('ASSISTANT:', $lastAiMessage['text']);
+    }
+
+    public function test_backend_transcript_response_is_cleaned(): void
+    {
+        $mockEngine = Mockery::mock(SanaaEngineService::class);
+        $mockEngine->shouldReceive('executeCommandAsync')
+            ->once()
+            ->with('What can you do?')
+            ->andReturn([
+                'response' => "USER: What can you do?\nASSISTANT: Checking...\nI can help with Sanaa AI operations.",
+            ]);
+
+        $this->app->instance(SanaaEngineService::class, $mockEngine);
+
+        $component = Livewire::test(SanaaTerminal::class)
+            ->set('command', 'What can you do?')
+            ->call('send')
+            ->assertSet('isLoading', false);
+
+        $history = $component->get('history');
+        $lastAiMessage = collect($history)->where('type', 'ai')->last();
+
+        $this->assertSame('I can help with Sanaa AI operations.', $lastAiMessage['text']);
     }
 
     public function test_clear_command_resets_history(): void

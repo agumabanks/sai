@@ -1,0 +1,105 @@
+name: daily_cleanup
+version: "1.0.0"
+description: >
+  Nightly maintenance workflow (02:00 EAT / 23:00 UTC).
+  Scans all sites for 500 errors, auto-heals where possible,
+  then runs disk cleanup on backups and caches older than 3 days.
+  Sends a combined report to Banks.
+
+triggers:
+  - type: cron
+    schedule: "0 23 * * *"   # 23:00 UTC = 02:00 EAT
+
+steps:
+  # ── Step 1: Scan all sites for 500s ────────────────────────────────────────
+  - id: scan_sites
+    action: skill
+    description: "Check every enabled nginx site for HTTP 500 errors"
+    params:
+      skill: site_500_healer
+      args:
+        action: scan
+
+  # ── Step 2: Auto-heal any 500s found ───────────────────────────────────────
+  - id: heal_sites
+    action: skill
+    description: "Attempt auto-remediation for any sites returning 5xx"
+    condition: "steps.scan_sites.data.has_500 == true"
+    params:
+      skill: site_500_healer
+      args:
+        action: heal
+    depends_on: [scan_sites]
+    on_failure: skip
+
+  # ── Step 3: Disk status before cleanup ────────────────────────────────────
+  - id: disk_before
+    action: skill
+    description: "Check disk usage before cleanup"
+    params:
+      skill: vps_janitor
+      args:
+        action: status
+    depends_on: [heal_sites]
+
+  # ── Step 4: Run disk cleanup ───────────────────────────────────────────────
+  - id: disk_cleanup
+    action: skill
+    description: "Remove old backups, build artifacts, and stale caches (>3 days)"
+    params:
+      skill: vps_janitor
+      args:
+        action: clean
+        max_age_days: 3
+        disk_threshold_pct: 75
+    depends_on: [disk_before]
+
+  # ── Step 5: Synthesise the nightly report ─────────────────────────────────
+  - id: nightly_report
+    action: llm
+    description: "Generate the nightly maintenance briefing"
+    params:
+      prompt: |
+        You are Sanaa AI generating the Nightly Maintenance Report for Banks.
+        Keep it concise. Use emojis. Format for WhatsApp readability.
+        Today's date: {{ now() }}
+
+        ## Site Health Scan
+        {{ steps.scan_sites.output }}
+
+        ## Healing Actions Taken
+        {{ steps.heal_sites.output | default("No 5xx sites detected — nothing to heal.") }}
+
+        ## Disk Cleanup
+        {{ steps.disk_cleanup.output }}
+
+        Write a clear summary covering:
+        1. Any sites that had 500s and whether they were fixed
+        2. How much disk space was freed and current % used
+        3. Any items that need manual attention
+        4. Overall system health status (🟢 / 🟡 / 🔴)
+      complexity: medium
+    depends_on: [disk_cleanup]
+
+  # ── Step 6: Send report via web notification ───────────────────────────────
+  - id: notify_web
+    action: notify
+    description: "Post the nightly report to the Sanaa AI web dashboard"
+    params:
+      channel: web
+      message: "{{ steps.nightly_report.output }}"
+    depends_on: [nightly_report]
+
+  # ── Step 7: Email the report ───────────────────────────────────────────────
+  - id: notify_email
+    action: skill
+    description: "Email the nightly report to Banks"
+    params:
+      skill: site_500_healer
+      args:
+        action: scan
+        send_report: true
+        recipient: "sanaaa.co@gmail.com"
+        domain: ""
+    depends_on: [nightly_report]
+    on_failure: skip

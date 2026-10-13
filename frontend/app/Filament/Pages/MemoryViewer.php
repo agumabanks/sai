@@ -8,12 +8,17 @@ use Filament\Pages\Page;
 
 class MemoryViewer extends Page
 {
-    protected static ?string $navigationIcon    = 'heroicon-o-light-bulb';
-    protected static ?string $navigationGroup   = 'Intelligence';
-    protected static ?int    $navigationSort    = 3;
-    protected static string  $view              = 'filament.pages.memory-viewer';
-    protected static ?string $title             = 'Memory Viewer';
-    protected static ?string $navigationLabel   = 'Memory Viewer';
+    protected static ?string $navigationIcon = 'heroicon-o-light-bulb';
+
+    protected static ?string $navigationGroup = 'Intelligence';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static string $view = 'filament.pages.memory-viewer';
+
+    protected static ?string $title = 'Memory Viewer';
+
+    protected static ?string $navigationLabel = 'Memory Viewer';
 
     // ── Page state ────────────────────────────────────────────────────────
 
@@ -129,6 +134,7 @@ class MemoryViewer extends Page
                 'label' => 'Medium',
             ];
         }
+
         return [
             'color' => 'text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20',
             'label' => 'Low',
@@ -224,12 +230,13 @@ class MemoryViewer extends Page
      */
     public function formatTimestamp(?string $timestamp): string
     {
-        if (!$timestamp) {
+        if (! $timestamp) {
             return 'Unknown';
         }
 
         try {
             $dt = new \DateTime($timestamp);
+
             return $dt->format('M j, Y g:ia');
         } catch (\Exception $e) {
             return $timestamp;
@@ -244,6 +251,7 @@ class MemoryViewer extends Page
         if (mb_strlen($text) <= $length) {
             return $text;
         }
-        return mb_substr($text, 0, $length) . '…';
+
+        return mb_substr($text, 0, $length).'…';
     }
 }

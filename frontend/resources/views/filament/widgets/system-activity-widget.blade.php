@@ -26,7 +26,7 @@
                 <div class="absolute left-[15px] top-6 bottom-6 w-px bg-gradient-to-b from-sanaa-cyan/50 via-sanaa-purple/30 to-transparent"></div>
                 
                 @foreach($activities as $index => $activity)
-                    <div class="relative pl-12 pb-8 group animate-slide-in-up" style="animation-delay: {{ $index * 100 }}ms">
+                    <div class="relative pl-12 pb-8 group animate-slide-in-up" style="animation-delay: {{ min($index * 80, 400) }}ms">
                         {{-- Timeline Dot --}}
                         <div class="absolute left-0 top-1 w-8 h-8 rounded-xl glass flex items-center justify-center 
                             {{ $activity['status'] === 'success' ? 'text-sanaa-emerald border-sanaa-emerald/20' : '' }}

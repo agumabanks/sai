@@ -3,19 +3,24 @@
 namespace App\Livewire;
 
 use App\Services\SanaaEngineService;
-use Livewire\Component;
 use Filament\Notifications\Notification;
+use Livewire\Component;
 
 class SanaaFab extends Component
 {
     public bool $isOpen = false;
+
     public array $status = [];
+
     public bool $securityScanner = true;
+
     public bool $autoHealer = true;
+
     public ?array $latestSignal = null;
 
     // Sub-modal state
     public ?string $activeModal = null;
+
     public array $modalData = [];
 
     protected $listeners = ['command-sent' => '$refresh'];
@@ -34,7 +39,7 @@ class SanaaFab extends Component
 
     public function toggleMenu()
     {
-        $this->isOpen = !$this->isOpen;
+        $this->isOpen = ! $this->isOpen;
         if ($this->isOpen) {
             $this->refreshStatus();
             $this->activeModal = null;
@@ -60,8 +65,8 @@ class SanaaFab extends Component
 
         return match ($modal) {
             'brain' => [
-                'provider' => $this->status['channels']['active_provider'] ?? 'LOCAL',
-                'providers' => ['LOCAL', 'GROQ', 'OPENROUTER'],
+                'provider' => $this->status['channels']['active_provider'] ?? 'GROQ',
+                'providers' => ['GROQ'],
                 'model' => $this->status['channels']['active_model'] ?? 'Unknown',
                 'uptime' => $this->status['system']['uptime'] ?? 'N/A',
             ],
@@ -84,7 +89,7 @@ class SanaaFab extends Component
                 'today' => $this->status['usage']['today'] ?? '0 requests',
                 'cost' => $this->status['usage']['cost'] ?? '$0.00',
                 'model' => $this->status['channels']['active_model'] ?? 'Unknown',
-                'provider' => $this->status['channels']['active_provider'] ?? 'LOCAL',
+                'provider' => $this->status['channels']['active_provider'] ?? 'GROQ',
             ],
             default => [],
         };
@@ -96,8 +101,8 @@ class SanaaFab extends Component
         $engine->executeCommand($command);
 
         Notification::make()
-            ->title($label . " Initiated")
-            ->body("Action sent to Sanaa Intelligence backend.")
+            ->title($label.' Initiated')
+            ->body('Action sent to Sanaa Intelligence backend.')
             ->info()
             ->send();
 
@@ -107,13 +112,13 @@ class SanaaFab extends Component
 
     public function togglePreference(string $key)
     {
-        $this->$key = !$this->$key;
+        $this->$key = ! $this->$key;
         $engine = app(SanaaEngineService::class);
         $engine->updatePreference($key, $this->$key);
 
         Notification::make()
-            ->title("Preference Updated")
-            ->body(str($key)->headline() . " is now " . ($this->$key ? "ENABLED" : "DISABLED"))
+            ->title('Preference Updated')
+            ->body(str($key)->headline().' is now '.($this->$key ? 'ENABLED' : 'DISABLED'))
             ->success()
             ->send();
     }

@@ -1,92 +1,50 @@
-<x-filament-widgets::widget>
-    <div class="relative overflow-hidden bg-white/[0.04] dark:bg-[#1c1c1e]/40 backdrop-blur-[40px] backdrop-saturate-[180%] rounded-[32px] xl:rounded-[40px] p-6 lg:p-8 shadow-[0_8px_32px_rgba(0,0,0,0.3)] border border-white/[0.08] flex flex-col">
-        
-        <div class="relative z-10 flex flex-col flex-1">
-            
-            {{-- Header with Toggle --}}
-            <div class="flex items-center justify-between pb-3">
-                <div class="flex flex-col">
-                    <h2 class="text-[22px] font-semibold tracking-tight text-white/95">Local Devices</h2>
-                </div>
-                {{-- Apple styled toggle --}}
-                <div class="w-[50px] h-[30px] rounded-full bg-[#30d158] relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] cursor-pointer">
-                    <div class="absolute top-[2px] right-[2px] w-[26px] h-[26px] bg-white rounded-full shadow-[0_2px_5px_rgba(0,0,0,0.3)] border border-black/5"></div>
-                </div>
-            </div>
+<x-filament-widgets::widget class="h-full">
+    <div class="relative overflow-hidden rounded-2xl bg-white/[0.04] backdrop-blur-[40px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.25)] border border-white/[0.08] h-full">
+        <div class="relative z-10 space-y-5">
 
-            {{-- Description text --}}
-            <div class="border-b border-white/[0.08] pb-5 mb-5">
-                <p class="text-[13px] text-white/60 leading-relaxed font-medium">
-                    Connect to edge nodes, local brain clusters, and external data sources. <a href="#" class="text-[#0a84ff] hover:underline">Learn more...</a>
-                </p>
-                <p class="text-[13px] text-white/60 leading-relaxed mt-4 font-medium">
-                    This Intelligence Core is discoverable as "ai.sanaa.co" while Local Devices is open.
-                </p>
-            </div>
-
-            {{-- My Devices Section --}}
-            <div class="flex flex-col flex-1">
-                <h3 class="text-[13px] font-bold text-white/80 mb-3 px-1">My Devices</h3>
-                
-                {{-- Devices List (Container mimicking Apple Settings grouped list) --}}
-                <div class="bg-white/5 border border-white/[0.08] rounded-[16px] overflow-hidden flex flex-col">
-                    
-                    {{-- Device 1 --}}
-                    <div class="flex items-center justify-between p-3 border-b border-white/[0.05] hover:bg-white/[0.04] transition-colors cursor-pointer group">
-                        <div class="flex items-center gap-4">
-                            <x-heroicon-s-server-stack class="w-6 h-6 text-white/80 pl-1" />
-                            <div class="leading-tight">
-                                <div class="text-[14px] font-medium text-white/95">Sanaa Mainframe Cluster</div>
-                                <div class="text-[12px] text-white/50">Connected</div>
-                            </div>
-                        </div>
-                        <div class="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white transition-colors">
-                            <span class="text-[12px] font-serif italic font-bold">i</span>
-                        </div>
+            {{-- Header --}}
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#30d158]/15 border border-[#30d158]/25 flex items-center justify-center">
+                        <x-heroicon-m-server-stack class="w-4 h-4 text-[#30d158]" />
                     </div>
-
-                    {{-- Device 2 --}}
-                    <div class="flex items-center justify-between p-3 border-b border-white/[0.05] hover:bg-white/[0.04] transition-colors cursor-pointer group">
-                        <div class="flex items-center gap-4">
-                            <x-heroicon-s-cpu-chip class="w-6 h-6 text-white/80 pl-1" />
-                            <div class="leading-tight">
-                                <div class="text-[14px] font-medium text-white/95">Local NPU Node (Groq)</div>
-                                <div class="text-[12px] text-white/50">Connected</div>
-                            </div>
-                        </div>
-                        <div class="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white transition-colors">
-                            <span class="text-[12px] font-serif italic font-bold">i</span>
-                        </div>
-                    </div>
-
-                    {{-- Device 3 --}}
-                    <div class="flex items-center justify-between p-3 hover:bg-white/[0.04] transition-colors cursor-pointer">
-                        <div class="flex items-center gap-4">
-                            <x-heroicon-s-circle-stack class="w-6 h-6 text-white/80 pl-1" />
-                            <div class="leading-tight">
-                                <div class="text-[14px] font-medium text-white/95">Vector DB Replica</div>
-                                <div class="text-[12px] text-[#ff9f0a]">Syncing...</div>
-                            </div>
-                        </div>
-                        <div class="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white transition-colors">
-                            <span class="text-[12px] font-serif italic font-bold">i</span>
-                        </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-white/90 tracking-tight">Services</h3>
+                        <p class="text-[10px] font-medium text-white/40 uppercase tracking-wider">{{ $activeCount }}/{{ $totalCount }} Active</p>
                     </div>
                 </div>
+                <button wire:click="refreshServices" class="p-2 rounded-xl hover:bg-white/[0.06] transition-colors group">
+                    <x-heroicon-m-arrow-path class="w-4 h-4 text-white/30 group-hover:text-white/60 transition-colors" />
+                </button>
             </div>
 
-            {{-- Nearby Devices Section --}}
-            <div class="mt-6 flex flex-col">
-                <div class="flex items-center justify-between mb-3 px-1">
-                    <h3 class="text-[13px] font-bold text-white/80">Nearby Devices</h3>
-                    <x-heroicon-o-arrow-path class="w-4 h-4 text-white/50 animate-spin" />
-                </div>
-                
-                <div class="bg-white/[0.02] border border-white/[0.04] rounded-[12px] p-4 flex items-center justify-center">
-                    <span class="text-[13px] text-white/40 font-medium">Searching...</span>
-                </div>
+            {{-- Services List --}}
+            <div class="space-y-1.5">
+                @forelse($services as $service)
+                    <div class="flex items-center justify-between py-2.5 px-3 rounded-xl {{ $service['active'] ? 'bg-white/[0.02]' : 'bg-[#ff453a]/5' }} border border-white/[0.04]">
+                        <div class="flex items-center gap-3">
+                            <x-dynamic-component
+                                :component="$this->getServiceIcon($service['name'])"
+                                class="w-4 h-4 {{ $service['active'] ? 'text-white/60' : 'text-[#ff453a]/70' }}"
+                            />
+                            <span class="text-[12px] font-medium {{ $service['active'] ? 'text-white/80' : 'text-[#ff453a]' }}">
+                                {{ $service['label'] }}
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-medium {{ $service['active'] ? 'text-[#30d158]' : 'text-[#ff453a]' }}">
+                                {{ $service['active'] ? 'Active' : ucfirst($service['state']) }}
+                            </span>
+                            <div class="w-1.5 h-1.5 rounded-full {{ $service['active'] ? 'bg-[#30d158]' : 'bg-[#ff453a]' }}"></div>
+                        </div>
+                    </div>
+                @empty
+                    <div class="text-center py-6">
+                        <p class="text-[12px] text-white/40">No services detected</p>
+                    </div>
+                @endforelse
             </div>
-            
+
         </div>
     </div>
 </x-filament-widgets::widget>

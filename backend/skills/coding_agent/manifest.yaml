@@ -1,0 +1,52 @@
+name: coding_agent
+description: "Developer sandbox: read, write, patch (search-and-replace), search (grep), or safely run read-only shell commands on the server codebase."
+version: "2.0.0"
+category: "development"
+tags: ["code", "file", "edit", "patch", "diff", "search", "grep", "run", "developer", "jarvis"]
+requires_approval: true
+parameters:
+  action:
+    type: string
+    description: "Action: read, write, list, patch, search, run"
+    required: true
+    enum: ["read", "write", "list", "patch", "search", "run"]
+  path:
+    type: string
+    description: "Absolute file or directory path"
+    required: false
+  content:
+    type: string
+    description: "Content to write (for 'write' action)"
+    required: false
+  directory:
+    type: string
+    description: "Directory to list or search in"
+    required: false
+  old_str:
+    type: string
+    description: "Exact text to find and replace (for 'patch' action)"
+    required: false
+  new_str:
+    type: string
+    description: "Replacement text (for 'patch' action)"
+    required: false
+  pattern:
+    type: string
+    description: "Regex/string pattern to grep for (for 'search' action)"
+    required: false
+  file_glob:
+    type: string
+    description: "File glob to filter search results e.g. '*.py', '*.yaml' (default: *.py)"
+    required: false
+  command:
+    type: string
+    description: "Safe read-only shell command to run (for 'run' action)"
+    required: false
+  offset:
+    type: integer
+    description: "Line offset for reading large files (for 'read' action)"
+    required: false
+  limit:
+    type: integer
+    description: "Max lines to read (default 300, for 'read' action)"
+    required: false

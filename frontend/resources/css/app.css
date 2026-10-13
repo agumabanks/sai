@@ -41,49 +41,566 @@
     --shadow-glow-cyan: 0 0 24px -4px hsla(189, 85%, 55%, 0.25);
 }
 
-/* ==================== FILAMENT DARK OVERRIDES ==================== */
-/* Force dark backgrounds on Filament panels — makes glass-dark actually premium */
+@layer base {
+    /* ==================== GLOBAL SCROLLBAR ==================== */
 
-.fi-body {
-    background: var(--color-gray-950) !important;
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.11);
+        border-radius: 99px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.22);
+    }
+
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.11) transparent;
+    }
+
+    /* ==================== FILAMENT DARK OVERRIDES ==================== */
+    /* Force dark backgrounds on Filament panels — makes glass-dark actually premium */
+
+    .fi-body {
+        background: var(--color-gray-950) !important;
+    }
+
+    /* Fix sidebar/content layout — prevent overlap/gaps */
+    .fi-layout {
+        overflow-x: hidden !important;
+        display: flex !important;
+        flex-direction: row !important;
+        /* Enforce full height to prevent sidebar from scrolling with content */
+        height: 100vh !important;
+        overflow: hidden !important;
+    }
+
+    .fi-main-ctn {
+        flex: 1 !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        background: transparent !important;
+        /* Allow main content area to scroll independently */
+        overflow-y: auto !important;
+        height: 100% !important;
+    }
+
+    /* Ensure content doesn't overlap behind fixed sidebar on mobile,
+   but stays beside sticky sidebar on desktop */
+    @media (min-width: 1024px) {
+        .fi-sidebar.fi-main-sidebar {
+            position: fixed !important;
+            inset-inline-start: 0 !important;
+            inset-inline-end: auto !important;
+            left: 0 !important;
+            right: auto !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            width: var(--sidebar-width) !important;
+            transform: none !important;
+        }
+
+        .fi-main-ctn.fi-main-ctn-sidebar-open {
+            padding-left: var(--sidebar-width) !important;
+            padding-right: 0 !important;
+        }
+    }
+
+    /* Main content area — proper padding */
+    .fi-main {
+        background: transparent !important;
+        width: 100% !important;
+        max-width: none !important;
+        padding-inline: clamp(12px, 2vw, 28px) !important;
+    }
+
+    .fi-sidebar {
+        background: rgba(10, 10, 15, 0.97) !important;
+        backdrop-filter: blur(20px) saturate(150%);
+        border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
+        flex-shrink: 0 !important;
+        z-index: 30 !important;
+    }
+
+    /* Sidebar header — compact */
+    .fi-sidebar-header {
+        height: 48px !important;
+        min-height: 48px !important;
+        padding-left: 14px !important;
+        padding-right: 14px !important;
+        background: rgba(10, 10, 15, 0.97) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+        box-shadow: none !important;
+    }
+
+    /* Sidebar nav — tight padding for slim sidebar */
+    .fi-sidebar-nav {
+        padding: 8px 10px 16px !important;
+        gap: 4px !important;
+    }
+
+    /* Sidebar groups list — tighten spacing */
+    .fi-sidebar-nav-groups {
+        gap: 2px !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    .fi-topbar {
+        background: rgba(12, 13, 18, 0.94) !important;
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        z-index: 20 !important;
+    }
+
+    .fi-topbar>nav {
+        background: rgba(12, 13, 18, 0.94) !important;
+        box-shadow: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    /* ==================== GOOGLE-STYLE MODULE SHELL ==================== */
+
+    .sanaa-launcher-trigger {
+        width: 40px;
+        height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        color: rgba(229, 231, 235, 0.88);
+        outline: none;
+        transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    .sanaa-launcher-trigger:hover,
+    .sanaa-launcher-trigger:focus-visible {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .sanaa-launcher-dots {
+        display: grid;
+        grid-template-columns: repeat(3, 4px);
+        gap: 3px;
+    }
+
+    .sanaa-launcher-dots span {
+        width: 4px;
+        height: 4px;
+        border-radius: 999px;
+        background: currentColor;
+    }
+
+    .sanaa-launcher-panel {
+        position: fixed;
+        left: var(--sanaa-launcher-left, 12px);
+        top: var(--sanaa-launcher-top, 58px);
+        z-index: 1000;
+        width: min(352px, calc(100vw - 24px));
+        max-height: calc(100dvh - var(--sanaa-launcher-top, 58px) - 12px);
+        transform-origin: top left;
+        border-radius: 18px;
+        background: #f8fafc;
+        color: #172033;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38), 0 1px 2px rgba(15, 23, 42, 0.12);
+        overflow: auto;
+    }
+
+    .sanaa-launcher-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 18px 10px;
+    }
+
+    .sanaa-launcher-header p {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .sanaa-launcher-header span {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #64748b;
+    }
+
+    .sanaa-launcher-active-chip {
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: #e8f0fe;
+        color: #1a73e8 !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+    }
+
+    .sanaa-launcher-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 8px 14px 18px;
+    }
+
+    .sanaa-launcher-app {
+        display: flex;
+        min-height: 88px;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 9px;
+        border-radius: 20px;
+        color: #334155;
+        text-decoration: none;
+        outline: none;
+        transition: background 0.14s ease, color 0.14s ease, transform 0.14s ease;
+    }
+
+    .sanaa-launcher-app:hover,
+    .sanaa-launcher-app:focus-visible,
+    .sanaa-launcher-app.is-active {
+        background: #eef4ff;
+        color: #0f172a;
+    }
+
+    .sanaa-launcher-app:active {
+        transform: scale(0.98);
+    }
+
+    .sanaa-launcher-app-icon {
+        width: 44px;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--sanaa-module-accent) 15%, white);
+        color: var(--sanaa-module-accent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sanaa-module-accent) 22%, transparent);
+    }
+
+    .sanaa-launcher-app.is-active .sanaa-launcher-app-icon {
+        background: var(--sanaa-module-accent);
+        color: #fff;
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--sanaa-module-accent) 22%, transparent);
+    }
+
+    .sanaa-launcher-app-label {
+        max-width: 84px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+        text-align: center;
+        color: inherit;
+    }
+
+    @media (max-width: 420px) {
+        .fi-main {
+            padding-inline: 10px !important;
+        }
+
+        .sanaa-launcher-panel {
+            width: calc(100vw - 16px);
+            left: 8px !important;
+            border-radius: 20px;
+        }
+
+        .sanaa-launcher-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            padding-inline: 10px;
+        }
+
+        .sanaa-launcher-app {
+            min-height: 82px;
+        }
+    }
+
+    .sanaa-sidebar-module-shell {
+        padding: 2px 0 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        margin-bottom: 4px;
+    }
+
+    .sanaa-sidebar-module-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 52px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--sanaa-module-accent) 10%, rgba(255, 255, 255, 0.03));
+        border: 1px solid color-mix(in srgb, var(--sanaa-module-accent) 20%, rgba(255, 255, 255, 0.08));
+    }
+
+    .sanaa-sidebar-module-icon {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        color: #fff;
+        background: var(--sanaa-module-accent);
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--sanaa-module-accent) 22%, transparent);
+    }
+
+    .sanaa-sidebar-module-card p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .sanaa-sidebar-module-card span {
+        display: block;
+        margin-top: 3px;
+        color: rgba(226, 232, 240, 0.48);
+        font-size: 10.5px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Only hide page header on the main dashboard — inner pages need it for actions */
+    .fi-page-dashboard .fi-page-header {
+        display: none !important;
+    }
+
+    /* Strategic Command Title Visibility */
+    .fi-header-heading {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.01em !important;
+    }
+
+    /* ==================== SIDEBAR NAVIGATION ==================== */
+
+    /* Nav items — compact for slim sidebar */
+    .fi-sidebar-item-label {
+        color: rgba(144, 144, 166, 1) !important;
+        font-size: 12.5px !important;
+        font-weight: 450 !important;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .fi-sidebar-item-active .fi-sidebar-item-label {
+        color: white !important;
+        font-weight: 600 !important;
+    }
+
+    /* Active sidebar item — indigo left-border glow */
+    .fi-sidebar-item-active .fi-sidebar-item-button {
+        background: rgba(94, 92, 230, 0.10) !important;
+        box-shadow: inset 3px 0 0 0 hsl(234, 89%, 64%) !important;
+        border-radius: 0 8px 8px 0 !important;
+    }
+
+    .fi-sidebar-item-button {
+        border-radius: 0 8px 8px 0 !important;
+        transition: background 0.15s ease, box-shadow 0.15s ease !important;
+        padding-top: 6px !important;
+        padding-bottom: 6px !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+        gap: 8px !important;
+    }
+
+    .fi-sidebar-item-button:hover:not(.fi-sidebar-item-active .fi-sidebar-item-button) {
+        background: rgba(255, 255, 255, 0.03) !important;
+    }
+
+    /* Nav item icons — slightly smaller */
+    .fi-sidebar-item-icon {
+        width: 18px !important;
+        height: 18px !important;
+    }
+
+    /* Group labels — tiny uppercase, tight */
+    .fi-sidebar-group-label {
+        color: rgba(107, 107, 129, 1) !important;
+        font-size: 9px !important;
+        letter-spacing: 0.15em !important;
+        text-transform: uppercase !important;
+        font-weight: 800 !important;
+    }
+
+    /* Group button container — tight spacing */
+    .fi-sidebar-group-button {
+        padding: 4px 8px !important;
+        gap: 6px !important;
+    }
+
+    /* Add breathing room ABOVE groups (not the first one) */
+    .fi-sidebar-group+.fi-sidebar-group {
+        margin-top: 12px !important;
+    }
+
+    /* Group items list — tight gap */
+    .fi-sidebar-group-items {
+        gap: 1px !important;
+    }
+
+    .fi-sidebar-group[data-sanaa-visible="false"] {
+        display: none !important;
+    }
+
+    /* Hide the collapse button label text (it duplicates the group label) */
+    .fi-sidebar-group-collapse-button {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+    }
+
+    /* Global sr-only utility fallback — Tailwind v4 build system fix */
+    .sr-only {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border-width: 0 !important;
+    }
+
+    /* ==================== FILAMENT FORM DARK MODE ==================== */
+
+    /* Section cards */
+    .fi-section {
+        background: rgba(17, 17, 24, 0.8) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        border-radius: 12px !important;
+        backdrop-filter: blur(12px);
+    }
+
+    .fi-section-header {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+        padding-bottom: 12px !important;
+    }
+
+    /* Inputs */
+    .fi-input,
+    .fi-select-input,
+    .fi-fo-textarea textarea,
+    .fi-fo-text-input input {
+        background: rgba(0, 0, 0, 0.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        border-radius: 8px !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    .fi-input:focus,
+    .fi-select-input:focus,
+    .fi-fo-textarea textarea:focus,
+    .fi-fo-text-input input:focus {
+        border-color: hsla(234, 89%, 64%, 0.5) !important;
+        box-shadow: 0 0 0 3px hsla(234, 89%, 64%, 0.12) !important;
+        outline: none !important;
+    }
+
+    .fi-input::placeholder,
+    .fi-fo-text-input input::placeholder,
+    .fi-fo-textarea textarea::placeholder {
+        color: rgba(144, 144, 166, 0.6) !important;
+    }
+
+    /* Primary button — indigo gradient */
+    .fi-btn-color-primary {
+        background: linear-gradient(135deg, hsl(234, 89%, 58%) 0%, hsl(262, 83%, 62%) 100%) !important;
+        border: none !important;
+        box-shadow: 0 4px 14px -2px hsla(234, 89%, 64%, 0.4) !important;
+        transition: box-shadow 0.2s ease, opacity 0.15s ease !important;
+    }
+
+    .fi-btn-color-primary:hover {
+        box-shadow: 0 6px 20px -2px hsla(234, 89%, 64%, 0.55) !important;
+        opacity: 0.95 !important;
+    }
+
+    /* Tabs */
+    .fi-tabs-tab {
+        color: rgba(144, 144, 166, 0.9) !important;
+        border-bottom: 2px solid transparent !important;
+        transition: color 0.15s ease, border-color 0.15s ease !important;
+    }
+
+    .fi-tabs-tab[aria-selected="true"] {
+        color: white !important;
+        border-bottom-color: hsl(234, 89%, 64%) !important;
+    }
+
+    /* Modal */
+    .fi-modal-window {
+        background: rgba(10, 10, 15, 0.97) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        backdrop-filter: blur(24px) !important;
+        box-shadow: 0 24px 60px -8px rgba(0, 0, 0, 0.7) !important;
+    }
+
+    /* Notifications */
+    .fi-notification {
+        background: rgba(17, 17, 24, 0.97) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        backdrop-filter: blur(16px) !important;
+        border-radius: 12px !important;
+    }
+
+    /* Tables */
+    .fi-ta-table {
+        background: transparent !important;
+    }
+
+    .fi-ta-table thead tr th {
+        background: rgba(0, 0, 0, 0.3) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        color: rgba(144, 144, 166, 0.9) !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+    }
+
+    .fi-ta-table tbody tr {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+        transition: background 0.12s ease !important;
+    }
+
+    .fi-ta-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02) !important;
+    }
+
+    .fi-ta-table tbody tr td {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
 }
 
-.fi-sidebar {
-    background: rgba(10, 10, 15, 0.95) !important;
-    backdrop-filter: blur(20px) saturate(150%);
-    border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
-}
-
-.fi-topbar {
-    background: rgba(10, 10, 15, 0.85) !important;
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
-}
-
-.fi-main {
-    background: transparent !important;
-}
-
-.fi-page-header {
-    display: none !important;
-}
-
-/* Filament sidebar item colors */
-.fi-sidebar-item-label {
-    color: rgba(144, 144, 166, 1) !important;
-}
-
-.fi-sidebar-item-active .fi-sidebar-item-label {
-    color: white !important;
-}
-
-.fi-sidebar-group-label {
-    color: rgba(107, 107, 129, 1) !important;
-    font-size: 9px !important;
-    letter-spacing: 0.15em !important;
-    text-transform: uppercase !important;
-    font-weight: 800 !important;
-}
+/* end @layer base */
 
 /* ==================== SCROLLBAR HIDE ==================== */
 
@@ -93,6 +610,414 @@
 
     &::-webkit-scrollbar {
         display: none;
+    }
+}
+
+/* ==================== WIDGET CARD ==================== */
+
+@utility widget-card {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.03), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+    border-radius: 16px;
+}
+
+/* ==================== DASHBOARD SURFACE ==================== */
+
+.sanaa-dashboard-backdrop {
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(180deg, #080a0f 0%, #05070b 52%, #090d12 100%);
+    background-size: 42px 42px, 42px 42px, auto;
+}
+
+.sanaa-dashboard-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, rgba(66, 133, 244, 0.08), transparent 32%, rgba(16, 185, 129, 0.06) 64%, transparent);
+}
+
+.sanaa-dashboard-header {
+    padding-top: 10px;
+}
+
+.sanaa-dashboard-shell {
+    min-width: 0;
+}
+
+.sanaa-dashboard-logo {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #1a73e8 0%, #34a853 100%);
+    box-shadow: 0 14px 30px rgba(26, 115, 232, 0.2);
+}
+
+.sanaa-dashboard-logo span {
+    display: none;
+}
+
+.sanaa-dashboard-launcher {
+    padding: 18px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 38px rgba(0, 0, 0, 0.18);
+}
+
+.sanaa-dashboard-active-pill {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(232, 240, 254, 0.1);
+    border: 1px solid rgba(138, 180, 248, 0.25);
+    color: #8ab4f8;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.sanaa-dashboard-module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+@media (min-width: 768px) {
+    .sanaa-dashboard-module-grid {
+        grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    }
+}
+
+.sanaa-dashboard-module {
+    min-height: 104px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 13px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.86);
+    text-align: center;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.sanaa-dashboard-module:hover,
+.sanaa-dashboard-module:focus-visible {
+    background: color-mix(in srgb, var(--sanaa-module-accent) 12%, rgba(255, 255, 255, 0.05));
+    border-color: color-mix(in srgb, var(--sanaa-module-accent) 42%, rgba(255, 255, 255, 0.08));
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.sanaa-dashboard-module-icon {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: var(--sanaa-module-accent);
+    color: #fff;
+    box-shadow: 0 12px 26px color-mix(in srgb, var(--sanaa-module-accent) 24%, transparent);
+}
+
+.sanaa-dashboard-module-label {
+    display: block;
+    width: 100%;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.sanaa-dashboard-module-sub {
+    display: block;
+    width: 100%;
+    color: rgba(226, 232, 240, 0.46);
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.sanaa-chat-page-wrap {
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+}
+
+.sanaa-chat-shell {
+    height: clamp(430px, 64dvh, 620px);
+    min-height: 0;
+    isolation: isolate;
+}
+
+.sanaa-chat-page .sanaa-chat-shell {
+    height: min(720px, calc(100dvh - 170px));
+    min-height: 520px;
+}
+
+.sanaa-dashboard-chat-preview .sanaa-chat-shell {
+    max-height: 620px;
+}
+
+.sanaa-assistant-bubble {
+    background: rgba(0, 0, 0, 0.46) !important;
+}
+
+.terminal-content,
+.terminal-content * {
+    max-width: 100%;
+}
+
+.terminal-content {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.terminal-content pre {
+    white-space: pre-wrap;
+    overflow-x: auto;
+    border-radius: 12px;
+}
+
+.terminal-content table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+@media (max-width: 767px) {
+    .sanaa-dashboard-header {
+        padding-top: 4px;
+    }
+
+    .sanaa-dashboard-launcher {
+        padding: 14px;
+    }
+
+    .sanaa-dashboard-module-grid {
+        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+        gap: 8px;
+    }
+
+    .sanaa-dashboard-module {
+        min-height: 94px;
+        padding: 11px 8px;
+    }
+
+    .sanaa-dashboard-module-icon {
+        width: 38px;
+        height: 38px;
+    }
+
+    .sanaa-chat-shell {
+        height: 470px;
+        max-height: calc(100dvh - 132px);
+        border-radius: 14px;
+    }
+
+    .sanaa-chat-page .sanaa-chat-shell {
+        height: calc(100dvh - 142px);
+        min-height: 460px;
+    }
+}
+
+/* ==================== COMMAND DOCK + SHORTCUTS ==================== */
+
+.sanaa-dashboard-shortcuts {
+    padding: 16px 18px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sanaa-dashboard-shortcuts-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.sanaa-dashboard-shortcut {
+    min-width: 132px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.sanaa-dashboard-shortcut:hover {
+    background: color-mix(in srgb, var(--dock-accent) 12%, rgba(255, 255, 255, 0.05));
+    border-color: color-mix(in srgb, var(--dock-accent) 38%, rgba(255, 255, 255, 0.08));
+    transform: translateY(-1px);
+}
+
+.sanaa-dashboard-shortcut-label {
+    display: block;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.sanaa-dashboard-shortcut-sub {
+    display: block;
+    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.42);
+    font-size: 10px;
+}
+
+.sanaa-command-dock {
+    pointer-events: auto;
+}
+
+.sanaa-command-dock-inner {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px 14px 12px;
+    background: rgba(8, 10, 15, 0.92);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.35);
+}
+
+.sanaa-command-dock-section {
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sanaa-command-dock-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.34);
+}
+
+.sanaa-command-dock-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sanaa-command-dock-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 11px;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sanaa-command-dock-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sanaa-command-dock-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 11px;
+}
+
+.sanaa-command-dock-stat strong {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.sanaa-command-dock-stat.is-warning {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.sanaa-command-dock-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7280;
+}
+
+.sanaa-command-dock-device.is-online .sanaa-command-dock-dot,
+.sanaa-command-dock-device.is-idle .sanaa-command-dock-dot,
+.sanaa-command-dock-app.is-healthy .sanaa-command-dock-dot {
+    background: #30d158;
+}
+
+.sanaa-command-dock-device.is-busy .sanaa-command-dock-dot,
+.sanaa-command-dock-app.is-degraded .sanaa-command-dock-dot {
+    background: #ff9f0a;
+}
+
+.sanaa-command-dock-device.is-offline .sanaa-command-dock-dot,
+.sanaa-command-dock-app.is-critical .sanaa-command-dock-dot {
+    background: #ff453a;
+}
+
+.sanaa-command-dock-muted {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.38);
+    font-style: italic;
+}
+
+.sanaa-command-dock-heal-btn {
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(99, 102, 241, 0.12);
+    color: rgba(199, 210, 254, 0.95);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.12s ease;
+}
+
+.sanaa-command-dock-heal-btn:hover:not(:disabled) {
+    background: rgba(99, 102, 241, 0.22);
+}
+
+.sanaa-command-dock-heal-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+@media (max-width: 1100px) {
+    .sanaa-command-dock-inner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .sanaa-command-dock-inner {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -184,6 +1109,23 @@
     50% {
         box-shadow: 0 0 36px -4px hsla(234, 89%, 64%, 0.4);
         opacity: 0.9;
+    }
+}
+
+/* Blink - Cursor caret */
+@utility animate-blink {
+    animation: blink 1.1s step-end infinite;
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0;
     }
 }
 
@@ -306,3 +1248,304 @@
         opacity: 0;
     }
 }
+
+@layer base {
+    /* ==================== LOGIN PAGE ==================== */
+
+    /* Force Filament's simple layout (used for login) to be dark + transparent */
+    .fi-simple-layout {
+        background: #030712 !important;
+    }
+
+    .fi-simple-main-ctn {
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+        max-width: none !important;
+        padding: 0 !important;
+    }
+
+    .fi-simple-main {
+        background: transparent !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+
+    /* Hide Filament's default simple page header (we use our own logo) */
+    .fi-simple-header {
+        display: none !important;
+    }
+
+    /* ── Login Page Container ── */
+    .sanaa-login-page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 2rem 1rem;
+    }
+
+    /* ── Ambient Background ── */
+    .sanaa-login-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .sanaa-login-bg-base {
+        position: absolute;
+        inset: 0;
+        background: #030712;
+    }
+
+    .sanaa-login-orb {
+        position: absolute;
+        border-radius: 100%;
+        mix-blend-mode: screen;
+    }
+
+    .sanaa-login-orb--violet {
+        top: -25%;
+        left: 5%;
+        width: 55vw;
+        height: 55vw;
+        background: hsla(262, 83%, 65%, 0.15);
+        filter: blur(120px);
+        opacity: 0.6;
+        animation: loginOrb1 12s ease-in-out infinite alternate;
+    }
+
+    .sanaa-login-orb--blue {
+        bottom: -15%;
+        right: -5%;
+        width: 45vw;
+        height: 45vw;
+        background: hsla(234, 89%, 64%, 0.12);
+        filter: blur(100px);
+        opacity: 0.5;
+        animation: loginOrb2 15s ease-in-out infinite alternate;
+    }
+
+    .sanaa-login-orb--rose {
+        top: 50%;
+        left: 50%;
+        width: 30vw;
+        height: 30vw;
+        background: hsla(346, 77%, 58%, 0.08);
+        filter: blur(100px);
+        opacity: 0.3;
+        animation: loginOrb3 10s ease-in-out infinite alternate;
+    }
+
+    @keyframes loginOrb1 {
+        0% {
+            transform: translate(0, 0) scale(1);
+        }
+
+        100% {
+            transform: translate(5%, 8%) scale(1.1);
+        }
+    }
+
+    @keyframes loginOrb2 {
+        0% {
+            transform: translate(0, 0) scale(1);
+        }
+
+        100% {
+            transform: translate(-4%, -6%) scale(1.08);
+        }
+    }
+
+    @keyframes loginOrb3 {
+        0% {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        100% {
+            transform: translate(-45%, -55%) scale(1.15);
+        }
+    }
+
+    /* ── Login Card ── */
+    .sanaa-login-card {
+        position: relative;
+        z-index: 10;
+        width: 100%;
+        max-width: 420px;
+        background: rgba(10, 10, 18, 0.65);
+        backdrop-filter: blur(40px) saturate(150%);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 24px;
+        padding: 2.5rem 2rem;
+        box-shadow:
+            0 24px 64px -12px rgba(0, 0, 0, 0.6),
+            inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+    }
+
+    /* ── Logo ── */
+    .sanaa-login-logo {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Tagline ── */
+    .sanaa-login-tagline {
+        text-align: center;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(144, 144, 166, 0.5);
+        margin-bottom: 1.5rem;
+    }
+
+    /* ── Divider ── */
+    .sanaa-login-divider {
+        height: 1px;
+        background: linear-gradient(90deg,
+                transparent 0%,
+                rgba(255, 255, 255, 0.08) 50%,
+                transparent 100%);
+        margin-bottom: 1.5rem;
+    }
+
+    /* ── Heading ── */
+    .sanaa-login-heading {
+        text-align: center;
+        font-size: 16px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.85);
+        letter-spacing: -0.01em;
+        margin-bottom: 1.75rem;
+    }
+
+    /* ── Form overrides inside login card ── */
+    .sanaa-login-card .fi-fo-field-wrp label,
+    .sanaa-login-card label,
+    .sanaa-login-card .fi-fo-field-wrp-label {
+        color: rgba(255, 255, 255, 0.7) !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.03em !important;
+    }
+
+    .sanaa-login-card .fi-input-wrp {
+        background: rgba(0, 0, 0, 0.35) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .sanaa-login-card .fi-input-wrp:focus-within {
+        border-color: hsla(234, 89%, 64%, 0.5) !important;
+        box-shadow: 0 0 0 4px hsla(234, 89%, 64%, 0.1),
+            0 0 24px -4px hsla(234, 89%, 64%, 0.15) !important;
+    }
+
+    .sanaa-login-card input {
+        background: transparent !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        border: none !important;
+        font-size: 14px !important;
+    }
+
+    .sanaa-login-card input::placeholder {
+        color: rgba(144, 144, 166, 0.4) !important;
+    }
+
+    /* Checkbox / "Remember me" */
+    .sanaa-login-card .fi-fo-checkbox-list,
+    .sanaa-login-card .fi-checkbox-input,
+    .sanaa-login-card .fi-fo-field-wrp .fi-checkbox-label,
+    .sanaa-login-card .fi-fo-field-wrp span,
+    .sanaa-login-card [wire\:model\.live="data.remember"]~span {
+        color: rgba(255, 255, 255, 0.55) !important;
+        font-size: 13px !important;
+    }
+
+    /* Sign in button */
+    .sanaa-login-card .fi-btn-color-primary {
+        background: linear-gradient(135deg, hsl(234, 89%, 58%) 0%, hsl(262, 83%, 62%) 100%) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 0.75rem 1.5rem !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        letter-spacing: 0.02em !important;
+        box-shadow: 0 4px 20px -4px hsla(234, 89%, 64%, 0.4),
+            inset 0 1px 0 0 rgba(255, 255, 255, 0.1) !important;
+        transition: box-shadow 0.25s ease, transform 0.15s ease !important;
+    }
+
+    .sanaa-login-card .fi-btn-color-primary:hover {
+        box-shadow: 0 8px 30px -4px hsla(234, 89%, 64%, 0.55),
+            inset 0 1px 0 0 rgba(255, 255, 255, 0.12) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    .sanaa-login-card .fi-btn-color-primary:active {
+        transform: translateY(0) !important;
+    }
+
+    /* Error messages */
+    .sanaa-login-card .fi-fo-field-wrp-error-message {
+        color: hsl(346, 77%, 58%) !important;
+    }
+
+    /* ── Autofill background override ── */
+    .sanaa-login-card input:-webkit-autofill,
+    .sanaa-login-card input:-webkit-autofill:hover,
+    .sanaa-login-card input:-webkit-autofill:focus,
+    .sanaa-login-card input:-webkit-autofill:active {
+        -webkit-box-shadow: 0 0 0 30px rgba(10, 10, 18, 0.95) inset !important;
+        -webkit-text-fill-color: rgba(255, 255, 255, 0.9) !important;
+        caret-color: rgba(255, 255, 255, 0.9) !important;
+        transition: background-color 5000s ease-in-out 0s !important;
+    }
+
+    /* ── Remember me checkbox ── */
+    .sanaa-login-card .fi-checkbox-label,
+    .sanaa-login-card [wire\\:model\\.live]+label,
+    .sanaa-login-card .fi-fo-field-wrp:last-of-type label {
+        color: rgba(255, 255, 255, 0.5) !important;
+        font-size: 13px !important;
+        font-weight: 400 !important;
+    }
+
+    /* ── Footer ── */
+    .sanaa-login-footer {
+        position: relative;
+        z-index: 10;
+        margin-top: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(144, 144, 166, 0.35);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .sanaa-login-footer-dot {
+        font-size: 14px;
+        opacity: 0.4;
+    }
+
+    /* ── Password reveal button ── */
+    .sanaa-login-card .fi-input-wrp button svg {
+        color: rgba(255, 255, 255, 0.3) !important;
+    }
+
+    .sanaa-login-card .fi-input-wrp button:hover svg {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+}
+
+/* end @layer base — login page */

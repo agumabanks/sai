@@ -3,8 +3,8 @@
 namespace App\Filament\Widgets;
 
 use App\Services\WhatsAppService;
-use Filament\Widgets\Widget;
 use Filament\Notifications\Notification;
+use Filament\Widgets\Widget;
 
 class WhatsAppStatusWidget extends Widget
 {
@@ -14,10 +14,12 @@ class WhatsAppStatusWidget extends Widget
 
     protected static ?string $pollingInterval = '30s';
 
-    protected int | string | array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
 
     public array $status = [];
+
     public string $quickPhone = '';
+
     public string $quickMessage = '';
 
     public function mount()
@@ -39,6 +41,7 @@ class WhatsAppStatusWidget extends Widget
                 ->body('Phone and message required.')
                 ->warning()
                 ->send();
+
             return;
         }
 

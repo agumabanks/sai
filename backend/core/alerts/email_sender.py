@@ -12,6 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from typing import List
 
 from core.config import get_settings
+from core.alerts.email_guard import reserve_alert_email
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -21,6 +22,10 @@ async def send_alert_email(
     subject: str,
     body: str,
     recipients: List[str],
+    *,
+    rate_limit: bool = True,
+    cooldown_seconds=None,
+    category: str = "alert",
 ) -> bool:
     """Send an alert email via SMTP to the given recipients.
 
@@ -54,6 +59,21 @@ async def send_alert_email(
     if not recipients:
         logger.warning("Alert email skipped: no recipients specified.")
         return False
+
+    recipients = [recipient.strip() for recipient in recipients if recipient.strip()]
+    if not recipients:
+        logger.warning("Alert email skipped: no usable recipients specified.")
+        return False
+
+    if rate_limit:
+        allowed, reason = await reserve_alert_email(
+            subject,
+            category=category,
+            cooldown_seconds=cooldown_seconds,
+        )
+        if not allowed:
+            logger.info("Alert email skipped: %s. Subject: %s", reason, subject)
+            return False
 
     try:
         msg = MIMEMultipart("alternative")

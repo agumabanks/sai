@@ -29,7 +29,8 @@ settings = get_settings()
 SAFE_TO_RESTART = {
     "ssh", "nginx", "redis-server", "postgresql",
     "antigravity-web", "antigravity-worker", "antigravity-beat",
-    "fail2ban", "php8.4-fpm", "ollama"
+    "sanaa-ai-web", "sanaa-ai-worker", "sanaa-ai-beat",
+    "fail2ban", "php8.4-fpm", "ollama", "whatsjet-worker"
 }
 
 # Max log file size before auto-truncation (100MB)
@@ -191,6 +192,8 @@ class SelfHealer:
         dependencies = {
             "antigravity-worker": ["redis-server"],
             "antigravity-beat": ["redis-server"],
+            "sanaa-ai-worker": ["redis-server"],
+            "sanaa-ai-beat": ["redis-server"],
             "whatsjet-worker": ["redis-server", "postgresql"],
             "php8.4-fpm": ["nginx"],
         }
@@ -205,7 +208,7 @@ class SelfHealer:
     async def _escalate_load_shedding(self, target: str, event: dict, level: int):
         """Tier 3: Temporarily suspend non-critical services to free memory.
 
-        RULE: antigravity-beat is NEVER shed. It is the task scheduler — stopping it
+        RULE: sanaa-ai-beat is NEVER shed. It is the task scheduler — stopping it
         silently kills all automation (newsletters, watchdog, monitoring) with no visible
         crash. If beat is stopped and pressure stays high, the healer can no longer
         receive its own watchdog results, creating a blind spot.
@@ -216,7 +219,7 @@ class SelfHealer:
         import json
         logger.warning(f"Healer: Tier 3 escalation - LOAD SHEDDING for {target} (attempt {level})")
 
-        # NEVER include antigravity-beat here.
+        # NEVER include sanaa-ai-beat here.
         # Shed ollama (high RAM, not essential) and whatsjet-worker (optional SaaS layer).
         non_critical = ["ollama", "whatsjet-worker"]
 
@@ -393,9 +396,9 @@ class SelfHealer:
             action["details"].append({"top_processes": top_lines[:5]})
 
             # Conservative remediation: restart known non-critical workers if they are top offenders.
-            # NOTE: antigravity-beat is intentionally excluded — restarting the scheduler
+            # NOTE: sanaa-ai-beat is intentionally excluded — restarting the scheduler
             # during memory pressure creates scheduling storms and breaks task sequencing.
-            candidates = ["antigravity-worker", "php8.4-fpm", "ollama"]
+            candidates = ["sanaa-ai-worker", "php8.4-fpm", "ollama"]
             for svc in candidates:
                 if any(svc in line for line in top_lines):
                     try:

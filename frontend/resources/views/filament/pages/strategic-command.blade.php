@@ -31,7 +31,7 @@
                     </div>
 
                     {{-- Title --}}
-                    <h3 class="text-lg font-medium tracking-tight text-zinc-900 dark:text-white leading-snug mb-2">
+                    <h3 class="text-lg font-medium tracking-tight text-zinc-900 dark:text-white leading-snug mb-2 line-clamp-2">
                         {{ $signal['title'] }}
                     </h3>
 
@@ -72,7 +72,7 @@
         @empty
             <div class="col-span-full py-24 flex flex-col items-center justify-center text-center">
                 <div class="h-16 w-16 rounded-full bg-white dark:bg-[#1c1c1e] border border-black/5 dark:border-white/5 flex items-center justify-center mb-6">
-                    <x-filament::icon icon="heroicon-o-radar" class="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
+                    <x-filament::icon icon="heroicon-o-signal" class="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
                 </div>
                 <h3 class="text-xl font-medium tracking-tight text-zinc-900 dark:text-white mb-2">No signals on radar</h3>
                 <p class="text-sm text-zinc-500 mb-8 max-w-sm">

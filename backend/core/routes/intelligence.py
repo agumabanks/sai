@@ -119,10 +119,12 @@ async def get_briefing(id: int, request: Request):
     if not briefing:
         raise HTTPException(404)
     return {
+        "id": briefing.id,
         "title": briefing.title,
         "content": briefing.content,
         "created_at": briefing.created_at.isoformat(),
         "pdf_path": briefing.pdf_path,
+        "metadata": briefing.metadata_ or {"article_count": 0, "topics": []},
     }
 
 

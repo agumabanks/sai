@@ -96,9 +96,9 @@ CRITICAL_SERVICES = {
     "postgresql": "active",
     "redis-server": "active",
     "fail2ban": "active",
-    "antigravity-web": "active",
-    "antigravity-worker": "active",
-    "antigravity-beat": "active",
+    "sanaa-ai-web": "active",
+    "sanaa-ai-worker": "active",
+    "sanaa-ai-beat": "active",
 }
 
 OPTIONAL_SERVICES = {
@@ -195,6 +195,7 @@ class ServerWatchdog:
             "ssh": ["service.ssh", "port.22"],
             "fail2ban": ["service.fail2ban", "fail2ban.admin_banned"],
             "services": [f"service.{s}" for s in CRITICAL_SERVICES.keys()],
+            "scheduler": ["scheduler.beat_alive", "scheduler.last_dispatch_age"],
             "resources": [
                 "cpu.percent", "memory.percent", "disk.percent", "load.1m", "swap.percent",
                 "cpu.trend", "memory.trend", "disk.trend"
@@ -208,11 +209,13 @@ class ServerWatchdog:
             ("ssh", self._check_ssh),
             ("fail2ban", self._check_fail2ban),
             ("services", self._check_services),
+            ("scheduler", self._check_scheduler_health),
             ("resources", self._check_resources),
             ("connectivity", self._check_connectivity),
             ("ports", self._check_ports),
             ("reboots", self._check_recent_reboots),
             ("disk_io", self._check_disk_health),
+            ("backups", self._check_database_backups),
         ]
 
         for name, check_fn in checks:
@@ -349,6 +352,85 @@ class ServerWatchdog:
 
         return events
 
+    # ==================== SCHEDULER HEALTH ====================
+
+    async def _check_scheduler_health(self) -> list[WatchdogEvent]:
+        """Dedicated check for the Celery beat scheduler — the heartbeat of all automation.
+
+        The _check_services check already flags beat as a CRITICAL_SERVICE, but that only
+        tells us it's down. This check goes deeper:
+          1. Confirms beat process is alive
+          2. Inspects the celerybeat-schedule DB to see how long ago beat last dispatched
+          3. Checks if beat was shed by the healer (so the event message is informative)
+
+        A scheduler that is silently dead is the most dangerous failure mode — all tasks
+        (newsletters, watchdog reports, health checks) stop with no visible error.
+        """
+        import os, json
+        events = []
+
+        beat_status = _systemctl_status("sanaa-ai-beat")
+
+        if beat_status != "active":
+            # Check if beat was intentionally shed by the healer
+            shed_context = ""
+            try:
+                shed_json = await SystemKnowledge.get_pref("healer.shed_services", default=None)
+                if shed_json:
+                    shed = json.loads(shed_json)
+                    if "sanaa-ai-beat" in shed:
+                        shed_context = " (NOTE: beat was load-shed by healer — this should not happen)"
+            except Exception:
+                pass
+
+            events.append(WatchdogEvent(
+                category="service",
+                severity=SEVERITY_CRITICAL,
+                message=(
+                    f"Celery beat scheduler is {beat_status} — ALL scheduled tasks are silently stopped."
+                    f" No newsletters, no monitoring, no watchdog reports will fire.{shed_context}"
+                ),
+                metric="scheduler.beat_alive",
+                value=beat_status,
+                remediation="sudo systemctl start sanaa-ai-beat",
+            ))
+            return events  # No point checking dispatch age if process is dead
+
+        # Beat is running — check if it's actually dispatching by inspecting the schedule DB
+        # celerybeat-schedule is a shelve DB written by beat on each dispatch cycle
+        schedule_db_paths = [
+            "/var/www/ai.sanaa.co/backend/celerybeat-schedule",
+            "/opt/antigravity/celerybeat-schedule",
+        ]
+        for db_path in schedule_db_paths:
+            # shelve writes .db, .dir, or no extension depending on the backend
+            for suffix in ("", ".db", ".dir"):
+                candidate = db_path + suffix
+                if os.path.exists(candidate):
+                    try:
+                        age_seconds = time.time() - os.path.getmtime(candidate)
+                        age_minutes = age_seconds / 60
+                        # Beat writes to the schedule DB every max_interval (default 5 min)
+                        # If the file is more than 15 minutes old, beat is stalled
+                        if age_minutes > 15:
+                            events.append(WatchdogEvent(
+                                category="service",
+                                severity=SEVERITY_HIGH,
+                                message=(
+                                    f"Celery beat appears stalled — schedule DB last updated "
+                                    f"{age_minutes:.0f} min ago (expected < 5 min). "
+                                    f"Beat process may be hung."
+                                ),
+                                metric="scheduler.last_dispatch_age",
+                                value=f"{age_minutes:.0f}m",
+                                remediation="sudo systemctl restart sanaa-ai-beat",
+                            ))
+                    except Exception:
+                        pass
+                    break  # Found a file for this db_path, stop suffix search
+
+        return events
+
     # ==================== RESOURCES ====================
 
     async def _check_resources(self) -> list[WatchdogEvent]:
@@ -409,10 +491,18 @@ class ServerWatchdog:
         # Load average
         load1, load5, load15 = psutil.getloadavg()
         cores = psutil.cpu_count()
-        if load1 > self.thresholds["load_critical"]:
+        load_warn_limit = max(float(self.thresholds["load_warn"]), cores * 0.75)
+        load_critical_limit = max(float(self.thresholds["load_critical"]), float(cores))
+        if load1 > load_critical_limit:
             events.append(WatchdogEvent(
                 category="resource", severity=SEVERITY_CRITICAL,
-                message=f"Load average {load1:.1f} ({cores} cores) — system overloaded",
+                message=f"Load average {load1:.1f} ({cores} cores) — critical threshold {load_critical_limit:.1f} exceeded",
+                metric="load.1m", value=f"{load1:.1f}",
+            ))
+        elif load1 > load_warn_limit:
+            events.append(WatchdogEvent(
+                category="resource", severity=SEVERITY_WARNING,
+                message=f"Load average {load1:.1f} ({cores} cores) — elevated but below critical threshold",
                 metric="load.1m", value=f"{load1:.1f}",
             ))
 
@@ -499,18 +589,128 @@ class ServerWatchdog:
                 value="0",
             ))
 
-        # DNS check
-        try:
-            socket.getaddrinfo("ai.sanaa.co", 443, socket.AF_INET)
-        except socket.gaierror:
-            events.append(WatchdogEvent(
-                category="network",
-                severity=SEVERITY_HIGH,
-                message="DNS resolution failing for ai.sanaa.co",
-                metric="dns.resolve",
-                value="failed",
-            ))
+        # DNS & SSL check for main domains
+        import ssl
+        domains_to_check = ["ai.sanaa.co", "soko.sanaa.ug", "fx.sanaa.co", "cards.sanaa.ug"]
+        
+        for domain in domains_to_check:
+            try:
+                # DNS
+                socket.getaddrinfo(domain, 443, socket.AF_INET)
+                
+                # SSL Expiry
+                context = ssl.create_default_context()
+                with socket.create_connection((domain, 443), timeout=5) as sock:
+                    with context.wrap_socket(sock, server_hostname=domain) as ssock:
+                        cert = ssock.getpeercert()
+                        expiry_date = datetime.strptime(cert['notAfter'], "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+                        days_left = (expiry_date - datetime.now(timezone.utc)).days
+                        
+                        if days_left < 7:
+                            events.append(WatchdogEvent(
+                                category="security",
+                                severity=SEVERITY_CRITICAL if days_left < 2 else SEVERITY_HIGH,
+                                message=f"SSL Certificate for {domain} expires in {days_left} days!",
+                                metric=f"ssl.expiry.{domain}",
+                                value=f"{days_left}d",
+                            ))
+            except socket.gaierror:
+                events.append(WatchdogEvent(
+                    category="network",
+                    severity=SEVERITY_HIGH,
+                    message=f"DNS resolution failing for {domain}",
+                    metric=f"dns.resolve.{domain}",
+                    value="failed",
+                ))
+            except Exception as e:
+                pass # Ignore SSL parsing errors for non-https internal hosts if any
 
+        return events
+
+    # ==================== BACKUPS ====================
+    async def _check_database_backups(self) -> list[WatchdogEvent]:
+        """Verify that daily database backups exist, are fresh, and stay within retention."""
+        events = []
+        import os
+
+        backup_targets = {
+            "mysql": "/var/backups/sanaa/mysql",
+            "root_daily": "/root/backups",
+            "finance_app": "/var/www/finance/mbalala/storage/backups",
+            "kalamba_app": "/var/www/kalamba.sanaa.co/mbalala/storage/backups",
+        }
+        now = datetime.now(timezone.utc)
+
+        try:
+            for name, backup_dir in backup_targets.items():
+                if not os.path.exists(backup_dir):
+                    events.append(WatchdogEvent(
+                        category="system",
+                        severity=SEVERITY_WARNING,
+                        message=f"Backup directory {backup_dir} not found. Ensure backups are configured.",
+                        metric=f"backup.{name}.dir_missing",
+                        value="missing",
+                    ))
+                    continue
+
+                entries = [
+                    os.path.join(backup_dir, file)
+                    for file in os.listdir(backup_dir)
+                    if not file.startswith(".")
+                ]
+                if not entries:
+                    events.append(WatchdogEvent(
+                        category="system",
+                        severity=SEVERITY_CRITICAL,
+                        message=f"No backups found in {backup_dir}. Data is at risk.",
+                        metric=f"backup.{name}.empty",
+                        value="empty",
+                    ))
+                    continue
+
+                newest_age_hours = min(
+                    (now - datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)).total_seconds() / 3600
+                    for path in entries
+                )
+                if newest_age_hours > 30:
+                    events.append(WatchdogEvent(
+                        category="system",
+                        severity=SEVERITY_CRITICAL,
+                        message=f"No fresh backup in {backup_dir}; newest is {newest_age_hours:.1f} hours old.",
+                        metric=f"backup.{name}.freshness",
+                        value=f"{newest_age_hours:.1f}h",
+                    ))
+
+                stale_entries = [
+                    path for path in entries
+                    if (now - datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)).days > 7
+                ]
+                if stale_entries:
+                    events.append(WatchdogEvent(
+                        category="system",
+                        severity=SEVERITY_WARNING,
+                        message=f"{len(stale_entries)} backup entry/entries in {backup_dir} exceed the one-week retention rule.",
+                        metric=f"backup.{name}.retention",
+                        value=str(len(stale_entries)),
+                        remediation=f"Delete backups older than one week in {backup_dir}",
+                    ))
+
+                for backup in entries:
+                    if os.path.isfile(backup) and backup.endswith((".sql", ".gz", ".dump")):
+                        size_mb = os.path.getsize(backup) / (1024 * 1024)
+                        # Some tenant databases are legitimately small. Alert only
+                        # for files that are effectively empty/truncated.
+                        if size_mb < 0.1:
+                            events.append(WatchdogEvent(
+                                category="system",
+                                severity=SEVERITY_HIGH,
+                                message=f"Backup {os.path.basename(backup)} is suspiciously small ({size_mb:.2f} MB).",
+                                metric=f"backup.{name}.size",
+                                value=f"{size_mb:.2f}MB",
+                            ))
+        except Exception as e:
+            logger.error(f"Error checking backups: {e}")
+            
         return events
 
     # ==================== PORTS ====================
@@ -550,10 +750,10 @@ class ServerWatchdog:
         # Count reboots in last 24h (from 'last reboot')
         try:
             result = subprocess.run(
-                "last reboot --since yesterday | grep -c reboot",
-                shell=True, capture_output=True, text=True, timeout=5,
+                ["last", "reboot", "--since", "yesterday"],
+                shell=False, capture_output=True, text=True, timeout=5,
             )
-            reboot_count = int(result.stdout.strip() or "0")
+            reboot_count = result.stdout.count("reboot")
             if reboot_count > 2:
                 events.append(WatchdogEvent(
                     category="system",
@@ -576,10 +776,15 @@ class ServerWatchdog:
         # Inode check
         try:
             result = subprocess.run(
-                "df -i / | tail -1 | awk '{print $5}'",
-                shell=True, capture_output=True, text=True, timeout=5,
+                ["df", "-i", "/"],
+                shell=False, capture_output=True, text=True, timeout=5,
             )
-            inode_pct = int(result.stdout.strip().replace("%", "") or "0")
+            inode_pct = 0
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if parts and parts[-1] == "/":
+                    inode_pct = int(parts[-2].replace("%", ""))
+                    break
             if inode_pct > 90:
                 events.append(WatchdogEvent(
                     category="resource",
@@ -601,8 +806,8 @@ def _systemctl_status(service: str) -> str:
     """Get systemd service status."""
     try:
         result = subprocess.run(
-            f"systemctl is-active {service}",
-            shell=True, capture_output=True, text=True, timeout=5,
+            ["systemctl", "is-active", service],
+            shell=False, capture_output=True, text=True, timeout=5,
         )
         return result.stdout.strip()
     except Exception:
@@ -633,8 +838,8 @@ def _get_fail2ban_banned_ips() -> set[str]:
     """Get currently banned IPs from fail2ban sshd jail."""
     try:
         result = subprocess.run(
-            "fail2ban-client status sshd",
-            shell=True, capture_output=True, text=True, timeout=5,
+            ["fail2ban-client", "status", "sshd"],
+            shell=False, capture_output=True, text=True, timeout=5,
         )
         for line in result.stdout.split("\n"):
             if "Banned IP list" in line:
@@ -649,12 +854,17 @@ def _get_recent_admin_ips() -> set[str]:
     """Get IPs of recent successful SSH logins (likely admin)."""
     try:
         result = subprocess.run(
-            "last -n 20 | grep 'pts/' | awk '{print $3}' | sort -u",
-            shell=True, capture_output=True, text=True, timeout=5,
+            ["last", "-n", "20"],
+            shell=False, capture_output=True, text=True, timeout=5,
         )
         ips = set()
         for line in result.stdout.strip().split("\n"):
-            ip = line.strip()
+            if "pts/" not in line:
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            ip = parts[2].strip()
             if ip and not ip.startswith("tmux") and not ip.startswith(":"):
                 ips.add(ip)
         return ips
@@ -665,11 +875,14 @@ def _get_recent_admin_ips() -> set[str]:
 def _fail2ban_has_ignoreip() -> bool:
     """Check if fail2ban jail.local has ignoreip configured."""
     try:
-        result = subprocess.run(
-            "grep -v '^#' /etc/fail2ban/jail.local 2>/dev/null | grep 'ignoreip'",
-            shell=True, capture_output=True, text=True, timeout=5,
-        )
-        return bool(result.stdout.strip())
+        with open("/etc/fail2ban/jail.local", "r") as fh:
+            for line in fh:
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                if "ignoreip" in stripped:
+                    return True
+        return False
     except Exception:
         return False
 

@@ -11,5 +11,5 @@ class TerminalWidget extends Widget
     protected static bool $isLazy = false;
 
     // Full width
-    protected int | string | array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
 }

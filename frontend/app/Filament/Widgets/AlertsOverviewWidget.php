@@ -14,7 +14,9 @@ class AlertsOverviewWidget extends Widget
     protected static bool $isLazy = false;
 
     public array $alerts = [];
+
     public int $totalCount = 0;
+
     public array $severityCounts = [];
 
     public function mount()
@@ -41,6 +43,7 @@ class AlertsOverviewWidget extends Widget
                 $this->severityCounts[$severity]++;
             }
             $time = $item['created_at'] ?? '';
+
             return [
                 'id' => $item['id'] ?? 0,
                 'severity' => $severity,

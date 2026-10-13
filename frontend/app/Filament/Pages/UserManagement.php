@@ -10,27 +10,39 @@ use Illuminate\Support\Facades\Validator;
 
 class UserManagement extends Page
 {
-    protected static ?string $navigationIcon  = 'heroicon-o-users';
-    protected static ?string $navigationGroup = 'Settings';
-    protected static ?int $navigationSort     = 3;
-    protected static string $view             = 'filament.pages.user-management';
+    protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    public array $users          = [];
+    protected static ?string $navigationGroup = 'Settings';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static string $view = 'filament.pages.user-management';
+
+    public array $users = [];
+
     public bool $showCreateModal = false;
-    public bool $showEditModal   = false;
-    public ?int $editingUserId   = null;
+
+    public bool $showEditModal = false;
+
+    public ?int $editingUserId = null;
 
     // ── Create form state ───────────────────────────────────────────────
-    public string $createName     = '';
-    public string $createEmail    = '';
+    public string $createName = '';
+
+    public string $createEmail = '';
+
     public string $createPassword = '';
-    public string $createRole     = 'viewer';
+
+    public string $createRole = 'viewer';
 
     // ── Edit form state ─────────────────────────────────────────────────
-    public string $editName     = '';
-    public string $editEmail    = '';
+    public string $editName = '';
+
+    public string $editEmail = '';
+
     public string $editPassword = '';
-    public string $editRole     = 'viewer';
+
+    public string $editRole = 'viewer';
 
     /**
      * Only admins can access this page.
@@ -59,10 +71,10 @@ class UserManagement extends Page
 
     public function openCreateModal(): void
     {
-        $this->createName     = '';
-        $this->createEmail    = '';
+        $this->createName = '';
+        $this->createEmail = '';
         $this->createPassword = '';
-        $this->createRole     = 'viewer';
+        $this->createRole = 'viewer';
         $this->showCreateModal = true;
     }
 
@@ -74,17 +86,17 @@ class UserManagement extends Page
     public function createUser(?array $data = null): void
     {
         $input = $data ?? [
-            'name'     => $this->createName,
-            'email'    => $this->createEmail,
+            'name' => $this->createName,
+            'email' => $this->createEmail,
             'password' => $this->createPassword,
-            'role'     => $this->createRole,
+            'role' => $this->createRole,
         ];
 
         $validator = Validator::make($input, [
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
-            'role'     => 'required|in:admin,operator,viewer',
+            'role' => 'required|in:admin,operator,viewer',
         ]);
 
         if ($validator->fails()) {
@@ -98,10 +110,10 @@ class UserManagement extends Page
         }
 
         User::create([
-            'name'     => $input['name'],
-            'email'    => $input['email'],
+            'name' => $input['name'],
+            'email' => $input['email'],
             'password' => Hash::make($input['password']),
-            'role'     => $input['role'],
+            'role' => $input['role'],
         ]);
 
         $this->showCreateModal = false;
@@ -125,10 +137,10 @@ class UserManagement extends Page
         }
 
         $this->editingUserId = $userId;
-        $this->editName      = $user->name;
-        $this->editEmail     = $user->email;
-        $this->editPassword  = '';
-        $this->editRole      = $user->role;
+        $this->editName = $user->name;
+        $this->editEmail = $user->email;
+        $this->editPassword = '';
+        $this->editRole = $user->role;
         $this->showEditModal = true;
     }
 
@@ -145,19 +157,20 @@ class UserManagement extends Page
 
         if (! $user) {
             Notification::make()->title('User not found')->danger()->send();
+
             return;
         }
 
         $input = $data ?? [
-            'name'  => $this->editName,
+            'name' => $this->editName,
             'email' => $this->editEmail,
-            'role'  => $this->editRole,
+            'role' => $this->editRole,
         ];
 
         $rules = [
-            'name'  => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'role'  => 'required|in:admin,operator,viewer',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,'.$user->id,
+            'role' => 'required|in:admin,operator,viewer',
         ];
 
         $validator = Validator::make($input, $rules);
@@ -173,9 +186,9 @@ class UserManagement extends Page
         }
 
         $user->update([
-            'name'  => $input['name'],
+            'name' => $input['name'],
             'email' => $input['email'],
-            'role'  => $input['role'],
+            'role' => $input['role'],
         ]);
 
         // Optional password update
@@ -203,6 +216,7 @@ class UserManagement extends Page
 
         if (! $user) {
             Notification::make()->title('User not found')->danger()->send();
+
             return;
         }
 
@@ -235,6 +249,7 @@ class UserManagement extends Page
 
         if (! $user) {
             Notification::make()->title('User not found')->danger()->send();
+
             return;
         }
 
@@ -253,10 +268,11 @@ class UserManagement extends Page
     public function getRoleBadge(string $role): array
     {
         return match ($role) {
-            'admin'    => ['label' => 'Admin', 'color' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20'],
+            'admin' => ['label' => 'Admin', 'color' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20'],
             'operator' => ['label' => 'Operator', 'color' => 'text-[#5e5ce6] bg-[#5e5ce6]/10 border-[#5e5ce6]/20'],
-            'viewer'   => ['label' => 'Viewer', 'color' => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20'],
-            default    => ['label' => ucfirst($role), 'color' => 'text-white/50 bg-white/5 border-white/10'],
+            'viewer' => ['label' => 'Viewer', 'color' => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20'],
+            'seller' => ['label' => 'Seller', 'color' => 'text-[#f97316] bg-[#f97316]/10 border-[#f97316]/20'],
+            default => ['label' => ucfirst($role), 'color' => 'text-white/50 bg-white/5 border-white/10'],
         };
     }
 }

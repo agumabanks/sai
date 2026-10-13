@@ -1,0 +1,23 @@
+name: server_monitor
+version: "1.0.0"
+description: Full-stack server monitoring — all web apps, databases, Docker containers, process managers, disk/memory/CPU, and SSL certificates across the entire Sanaa infrastructure
+permissions: [shell, network]
+requires_approval: false
+timeout: 90
+tags: [monitoring, infrastructure, server, operations]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action: overview, apps, databases, docker, services, ssl, resources, nginx, logs"
+    required: true
+    enum: [overview, apps, databases, docker, services, ssl, resources, nginx, logs]
+  - name: app
+    type: string
+    description: "Filter by specific app/domain (e.g. soko.sanaa.co). If omitted, checks all."
+    required: false
+  - name: lines
+    type: integer
+    description: "Number of log lines to return (for logs action)"
+    required: false
+    default: 50

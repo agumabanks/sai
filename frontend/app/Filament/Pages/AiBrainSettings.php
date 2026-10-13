@@ -2,24 +2,27 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Pages\Page;
-use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Form;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Section;
-use Filament\Notifications\Notification;
 use App\Models\User;
 use App\Services\SanaaEngineService;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Forms\Form;
+use Filament\Notifications\Notification;
+use Filament\Pages\Page;
 
 class AiBrainSettings extends Page implements HasForms
 {
     use InteractsWithForms;
 
     protected static ?string $navigationIcon = 'heroicon-o-cpu-chip';
+
     protected static ?string $navigationGroup = 'Settings';
+
     protected static ?int $navigationSort = 1;
+
     protected static string $view = 'filament.pages.ai-brain-settings';
 
     public ?array $data = [];
@@ -57,7 +60,7 @@ class AiBrainSettings extends Page implements HasForms
         $engine = app(SanaaEngineService::class);
         $config = $engine->getBrainConfig();
 
-        if (!empty($config)) {
+        if (! empty($config)) {
             $defaults['provider'] = $config['provider'] ?? $defaults['provider'];
             $defaults['claude_source'] = $config['claude_source'] ?? $defaults['claude_source'];
             $defaults['auto_provider_order'] = $config['auto_provider_order'] ?? $defaults['auto_provider_order'];
@@ -155,7 +158,7 @@ class AiBrainSettings extends Page implements HasForms
         ];
 
         $success = $engine->updateBrainConfig($payload);
-        
+
         if ($success) {
             Notification::make()
                 ->title('Brain configuration updated')

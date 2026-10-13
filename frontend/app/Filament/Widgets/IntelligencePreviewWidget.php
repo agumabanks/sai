@@ -14,8 +14,12 @@ class IntelligencePreviewWidget extends Widget
     protected static bool $isLazy = false;
 
     public ?array $latestBriefing = null;
+
     public ?array $latestSignal = null;
+
     public int $briefingCount = 0;
+
+    public ?string $warningMessage = null;
 
     public function mount()
     {
@@ -25,12 +29,17 @@ class IntelligencePreviewWidget extends Widget
     public function refreshIntelligence()
     {
         $engine = app(SanaaEngineService::class);
+        $engine->clearLastError();
+        $this->warningMessage = null;
+        $this->latestBriefing = null;
+        $this->latestSignal = null;
+        $this->briefingCount = 0;
 
         // Latest briefing
         $briefings = $engine->getBriefings(5);
         $this->briefingCount = count($briefings);
 
-        if (!empty($briefings)) {
+        if (! empty($briefings)) {
             $first = $briefings[0];
             $this->latestBriefing = [
                 'id' => $first['id'] ?? 0,
@@ -41,6 +50,10 @@ class IntelligencePreviewWidget extends Widget
             ];
         }
 
+        if (! $this->warningMessage && $engine->getLastError()) {
+            $this->warningMessage = $engine->getLastError();
+        }
+
         // Latest strategic signal
         $signal = $engine->getLatestSignal();
         if (isset($signal['title'])) {
@@ -49,6 +62,10 @@ class IntelligencePreviewWidget extends Widget
                 'score' => $signal['score'] ?? 0,
                 'time' => isset($signal['created_at']) ? \Carbon\Carbon::parse($signal['created_at']) : now(),
             ];
+        }
+
+        if (! $this->warningMessage && $engine->getLastError()) {
+            $this->warningMessage = $engine->getLastError();
         }
     }
 }

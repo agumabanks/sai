@@ -1,0 +1,24 @@
+name: site_watcher
+description: "Watch websites for content changes using HTML diffs. Add/remove watches, check for updates, and get AI-powered summaries of what changed. Ideal for competitor monitoring, Central Bank notices, or any site without RSS."
+version: "2.0.0"
+category: "research"
+tags: ["watcher", "scrape", "diff", "monitor", "website", "competitor", "blogwatcher", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: add_watch, remove_watch, list_watches, check_now"
+    required: true
+    enum: ["add_watch", "remove_watch", "list_watches", "check_now"]
+  url:
+    type: string
+    description: "URL to watch or unwatch"
+    required: false
+  label:
+    type: string
+    description: "Human-readable label for this watch (e.g. 'Central Bank of Uganda')"
+    required: false
+test_cases:
+  - name: "List watches"
+    args:
+      action: "list_watches"
+    expect_success: true

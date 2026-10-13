@@ -67,9 +67,10 @@ class WorkflowBuilderTest extends TestCase
                     return ['error' => 'Empty YAML'];
                 }
                 // Check for basic workflow structure
-                if (!str_contains($yaml, 'name:') || !str_contains($yaml, 'steps:')) {
+                if (! str_contains($yaml, 'name:') || ! str_contains($yaml, 'steps:')) {
                     return ['error' => 'Invalid workflow YAML'];
                 }
+
                 return ['status' => 'saved', 'name' => 'test_workflow'];
             }
         });

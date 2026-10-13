@@ -2,16 +2,16 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\User;
 use App\Services\SanaaEngineService;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
-use App\Models\User;
 use Filament\Pages\Page;
 
 class SessionPolicy extends Page implements HasForms
@@ -19,8 +19,11 @@ class SessionPolicy extends Page implements HasForms
     use InteractsWithForms;
 
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
+
     protected static ?string $navigationGroup = 'Settings';
+
     protected static ?int $navigationSort = 2;
+
     protected static string $view = 'filament.pages.session-policy';
 
     public ?array $data = [];
@@ -34,7 +37,9 @@ class SessionPolicy extends Page implements HasForms
 
         return $user instanceof User && $user->canAccessSettings();
     }
+
     public array $sessions = [];
+
     public ?array $selectedSession = null;
 
     public function mount(): void
@@ -53,8 +58,8 @@ class SessionPolicy extends Page implements HasForms
         $this->form->fill([
             'dm_scope' => $policy['dm_scope'] ?? 'per-channel-peer',
             'reset_mode' => $policy['reset']['mode'] ?? 'daily_or_idle',
-            'reset_at_hour' => (string)($policy['reset']['at_hour'] ?? 4),
-            'reset_idle_minutes' => (string)($policy['reset']['idle_minutes'] ?? 240),
+            'reset_at_hour' => (string) ($policy['reset']['at_hour'] ?? 4),
+            'reset_idle_minutes' => (string) ($policy['reset']['idle_minutes'] ?? 240),
             'send_default' => $policy['send_policy']['default'] ?? 'allow',
             'send_rules_json' => json_encode($policy['send_policy']['rules'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'reset_triggers' => implode(',', $policy['reset_triggers'] ?? ['/new', '/reset']),
@@ -116,27 +121,28 @@ class SessionPolicy extends Page implements HasForms
     {
         $engine = app(SanaaEngineService::class);
         $state = $this->form->getState();
-        $rules = json_decode((string)($state['send_rules_json'] ?? '[]'), true);
+        $rules = json_decode((string) ($state['send_rules_json'] ?? '[]'), true);
         $payload = [
-            'dm_scope' => (string)($state['dm_scope'] ?? 'per-channel-peer'),
+            'dm_scope' => (string) ($state['dm_scope'] ?? 'per-channel-peer'),
             'reset' => [
-                'mode' => (string)($state['reset_mode'] ?? 'daily_or_idle'),
-                'at_hour' => (int)($state['reset_at_hour'] ?? 4),
-                'idle_minutes' => (int)($state['reset_idle_minutes'] ?? 240),
+                'mode' => (string) ($state['reset_mode'] ?? 'daily_or_idle'),
+                'at_hour' => (int) ($state['reset_at_hour'] ?? 4),
+                'idle_minutes' => (int) ($state['reset_idle_minutes'] ?? 240),
             ],
             'send_policy' => [
-                'default' => (string)($state['send_default'] ?? 'allow'),
+                'default' => (string) ($state['send_default'] ?? 'allow'),
                 'rules' => is_array($rules) ? $rules : [],
             ],
-            'reset_triggers' => array_values(array_filter(array_map('trim', explode(',', (string)($state['reset_triggers'] ?? '/new,/reset'))))),
+            'reset_triggers' => array_values(array_filter(array_map('trim', explode(',', (string) ($state['reset_triggers'] ?? '/new,/reset'))))),
         ];
         $res = $engine->updateSessionPolicy($payload);
         if (($res['status'] ?? null) === 'success') {
             Notification::make()->title('Session policy updated')->success()->send();
             $this->refreshData();
+
             return;
         }
-        Notification::make()->title('Failed to update session policy')->body((string)($res['error'] ?? 'Unknown error'))->danger()->send();
+        Notification::make()->title('Failed to update session policy')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
     }
 
     public function inspectSession(string $sessionId): void
@@ -152,9 +158,10 @@ class SessionPolicy extends Page implements HasForms
         if (($res['status'] ?? null) === 'success') {
             Notification::make()->title('Session reset')->success()->send();
             $this->refreshData();
+
             return;
         }
-        Notification::make()->title('Session reset failed')->body((string)($res['error'] ?? 'Unknown error'))->danger()->send();
+        Notification::make()->title('Session reset failed')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
     }
 
     public function setSendOverride(string $sessionId, string $mode): void
@@ -164,9 +171,9 @@ class SessionPolicy extends Page implements HasForms
         if (($res['status'] ?? null) === 'success') {
             Notification::make()->title("Send policy override: {$mode}")->success()->send();
             $this->refreshData();
+
             return;
         }
-        Notification::make()->title('Send policy override failed')->body((string)($res['error'] ?? 'Unknown error'))->danger()->send();
+        Notification::make()->title('Send policy override failed')->body((string) ($res['error'] ?? 'Unknown error'))->danger()->send();
     }
 }
-

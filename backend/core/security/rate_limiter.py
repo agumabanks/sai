@@ -19,13 +19,18 @@ class RateLimiter:
         self,
         redis_url: str = None,
         default_rpm: int = 60,
+        redis_failure_mode: str = "open",
     ):
         """
         Args:
             redis_url: Redis connection URL (e.g. redis://localhost:6379/0).
             default_rpm: Default requests per minute.
+            redis_failure_mode: "open" to allow requests when Redis fails,
+                                "closed" to deny them. Sensitive endpoints can
+                                override per-check via fail_closed.
         """
         self.default_rpm = default_rpm
+        self.redis_failure_mode = redis_failure_mode
         self._redis = None
         self._fallback: dict[str, list] = {}  # key -> [timestamps]
 
@@ -37,12 +42,20 @@ class RateLimiter:
             except Exception as e:
                 logger.warning(f"Redis unavailable for rate limiter, using memory: {e}")
 
-    async def check(self, key: str, limit: int = None) -> bool:
+    async def check(
+        self,
+        key: str,
+        limit: int = None,
+        fail_closed: bool = False,
+    ) -> bool:
         """Check if a request is allowed under the rate limit.
 
         Args:
             key: Rate limit bucket key (e.g. "ip:1.2.3.4" or "user:admin@x.com").
             limit: Override RPM for this check. Defaults to self.default_rpm.
+            fail_closed: If True and Redis is unreachable, deny the request.
+                         If False, fall back to in-memory counting or allow on
+                         catastrophic Redis failure.
 
         Returns:
             True if the request is allowed, False if rate limited.
@@ -50,10 +63,23 @@ class RateLimiter:
         limit = limit or self.default_rpm
 
         if self._redis:
-            return await self._check_redis(key, limit)
+            return await self._check_redis(key, limit, fail_closed=fail_closed)
         return self._check_memory(key, limit)
 
-    async def _check_redis(self, key: str, limit: int) -> bool:
+    def _redis_failure_result(self, fail_closed: bool, error: Exception) -> bool:
+        """Return the failure decision for a Redis outage."""
+        if fail_closed or self.redis_failure_mode == "closed":
+            logger.warning(f"Redis rate check failed, denying (fail-closed): {error}")
+            return False
+        logger.warning(f"Redis rate check failed, allowing (fail-open): {error}")
+        return True
+
+    async def _check_redis(
+        self,
+        key: str,
+        limit: int,
+        fail_closed: bool = False,
+    ) -> bool:
         """Redis-backed sliding window rate check."""
         try:
             redis_key = f"rate:{key}"
@@ -71,8 +97,7 @@ class RateLimiter:
             return count < limit
 
         except Exception as e:
-            logger.warning(f"Redis rate check failed, allowing: {e}")
-            return True
+            return self._redis_failure_result(fail_closed, e)
 
     def _check_memory(self, key: str, limit: int) -> bool:
         """In-memory fallback rate check."""

@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/api/watchdog/events")
 async def get_watchdog_events(request: Request, user: dict = Depends(require_auth)):
     """Get recent watchdog events for the live feed."""
-    return deps._recent_events
+    return deps.get_recent_events()
 
 
 @router.post("/api/watchdog/run")
@@ -29,8 +29,8 @@ async def run_watchdog_now(request: Request, user: dict = Depends(require_auth))
     events, checked_metrics = await deps.watchdog.run_full_check()
     event_dicts = [e.to_dict() for e in events]
 
-    # Store in recent events — mutate the shared list in deps
-    deps._recent_events[:] = (event_dicts + deps._recent_events)[:deps.MAX_EVENTS]
+    # Store in recent events — persist to Redis and keep in-memory cache hot
+    await deps.add_recent_events(event_dicts)
 
     # Auto-heal
     actions = await deps.healer.process_events(events, checked_metrics)
@@ -88,13 +88,14 @@ async def run_watchdog_now(request: Request, user: dict = Depends(require_auth))
 async def watchdog_events_htmx(request: Request, user: dict = Depends(require_auth)):
     """htmx-friendly live event feed fragment."""
 
-    if not deps._recent_events:
+    recent = deps.get_recent_events(limit=15)
+    if not recent:
         return HTMLResponse(
             '<div class="text-gray-500 text-sm italic p-3 text-center">No events yet — waiting for next watchdog cycle</div>'
         )
 
     html_parts = []
-    for e in deps._recent_events[:15]:
+    for e in recent:
         color = {
             "critical": "text-red-400", "high": "text-orange-400",
             "warning": "text-yellow-400", "info": "text-blue-300",

@@ -86,11 +86,16 @@ async def run_system_doctor_api(user: dict = Depends(require_auth)):
 
 
 @router.get("/api/activities")
-async def get_activities(request: Request, limit: int = 20, user: dict = Depends(require_auth)):
+async def get_activities(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    user: dict = Depends(require_auth),
+):
     """Get recent system activities for the dashboard feed."""
     activities = []
 
-    for e in deps._recent_events[:limit]:
+    for e in deps.get_recent_events(limit=limit, offset=offset):
         severity = e.get("severity", "info")
         icon = {
             "critical": "heroicon-m-exclamation-triangle",

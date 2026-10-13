@@ -1,0 +1,14 @@
+name: mailcow_agent
+version: "1.0.0"
+description: Monitors Mailcow email queues, container health, and storage via Docker commands.
+permissions: [shell, network]
+requires_approval: false
+timeout: 60
+tags: [email, monitoring, mailcow, infrastructure]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action: queue_depth, container_health, check_storage"
+    required: true
+    enum: [queue_depth, container_health, check_storage]

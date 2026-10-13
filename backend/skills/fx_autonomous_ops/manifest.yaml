@@ -1,0 +1,34 @@
+name: fx_autonomous_ops
+version: "1.0.0"
+description: Monitor and self-heal the fx.sanaa.co production stack with bounded repairs for frontend builds, PM2 drift, port mismatches, nginx upstream drift, and public health failures.
+permissions: [shell, network, filesystem]
+requires_approval: true
+timeout: 2100
+tags: [fx, operations, monitoring, self-heal, infrastructure]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action to perform"
+    required: true
+    enum: [run_once, dry_run, validate, incidents, install_timer, show_contract]
+  - name: no_email
+    type: boolean
+    description: "Disable email delivery for run_once or dry_run"
+    required: false
+    default: false
+  - name: limit
+    type: integer
+    description: "Number of incident records to return for incidents action"
+    required: false
+    default: 10
+  - name: enable_now
+    type: boolean
+    description: "Enable and start the systemd timer immediately when installing"
+    required: false
+    default: false
+  - name: allow_without_email
+    type: boolean
+    description: "Allow timer enablement even if SMTP/email env is still empty"
+    required: false
+    default: false

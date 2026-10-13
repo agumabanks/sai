@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from core.database import IntelligenceBriefing, StrategicSignal, AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -67,3 +67,29 @@ async def archive_knowledge(title: str, content: str, signals: List[Dict[str, An
 
 # Keep archive_briefing for backward compatibility but alias it
 archive_briefing = archive_knowledge
+
+
+async def attach_pdf_to_latest_briefing(content: str, pdf_path: str) -> Optional[int]:
+    """Attach a generated PDF path to the newest briefing matching this content."""
+    try:
+        from sqlalchemy import select, desc
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(IntelligenceBriefing)
+                .where(IntelligenceBriefing.content == content)
+                .order_by(desc(IntelligenceBriefing.created_at))
+                .limit(1)
+            )
+            briefing = result.scalars().first()
+            if not briefing:
+                logger.warning("No archived briefing found for generated PDF")
+                return None
+
+            briefing.pdf_path = pdf_path
+            await session.commit()
+            logger.info(f"Attached PDF to briefing {briefing.id}: {pdf_path}")
+            return briefing.id
+    except Exception as e:
+        logger.error(f"Failed to attach PDF to briefing: {e}")
+        return None

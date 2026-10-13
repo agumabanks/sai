@@ -1,0 +1,26 @@
+name: "Nightly Skill Test Execution"
+description: "Runs the skill_tester across all ecosystem skills and alerts admins if any self-tests fail, triggering self_improve where appropriate."
+triggers:
+  - type: cron
+    schedule: "0 2 * * *"  # Run at 2 AM daily
+steps:
+  - name: "Run All Test Cases"
+    action: "skill"
+    skill: "skill_tester"
+    args: {}
+    timeout: 600
+
+  - name: "Notify Admin on Failure"
+    action: "skill"
+    skill: "team_broadcast"
+    args:
+      channel: "whatsapp"
+      message: "🚨 Nightly Skill Tests Failed: Check dashboard for exact failures. The self-improvement autonomous agent is now analyzing failed traces."
+    condition: "not context.get('Run All Test Cases').get('success', True)"
+    
+  - name: "Auto-Analyze Failures"
+    action: "skill"
+    skill: "self_improve"
+    args:
+      action: "analyze"
+    condition: "not context.get('Run All Test Cases').get('success', True)"

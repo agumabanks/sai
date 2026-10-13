@@ -3,7 +3,8 @@ Sanaa AI — Operations Agent
 Main FastAPI application with session auth, dashboard, and multi-channel routing.
 
 Routes are split into modular APIRouter files under core/routes/.
-This file handles app creation, middleware, lifespan, and router includes.
+This file handles app creation, lifespan, and router includes.
+Startup helpers and middleware setup live in core.startup to keep this file small.
 """
 
 import logging
@@ -11,12 +12,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 
-from core.config import get_settings
-from core.database import init_db, utcnow
+from core.config import get_settings, validate_production_secrets
+from core.database import init_db
 from core.integrations.whatsapp_saas_manager import WhatsAppSaaSManager
 
 from core.agents.server_health import ServerHealthAgent
@@ -58,6 +56,31 @@ from core.routes.sellers import router as sellers_router
 from core.routes.tenants import router as tenants_router, seed_initial_tenants
 from core.routes.marketing import router as marketing_router
 from core.routes.audit import router as audit_router
+from core.routes.system_os import router as system_os_router
+from core.routes.extras import router as extras_router
+from core.routes.auth_os import router as auth_os_router
+from core.routes.terminal_os import router as terminal_os_router
+from core.routes.browser_os import router as browser_os_router
+from core.routes.notes_os import router as notes_os_router
+from core.routes.users_os import router as users_os_router
+from core.routes.contacts_os import router as contacts_os_router
+from core.routes.files_os import router as files_os_router
+from core.routes.cloud_os import router as cloud_os_router
+from core.routes.analytics_os import router as analytics_os_router
+from core.routes.soko_os import router as soko_os_router
+from core.routes.papers_os import router as papers_os_router
+from core.routes.app_launcher_os import router as app_launcher_router
+from core.routes.telemetry_os import router as telemetry_router
+from core.routes.memory import router as memory_router
+from core.routes.brain_intelligence import router as brain_intelligence_router
+from core.routes.brain_graph import router as brain_graph_router
+from core.routes.device_army import router as device_army_router
+from core.routes.account_os import router as account_os_router
+from core.routes.wallpapers_os import router as wallpapers_os_router
+from core.services.device_ws_manager import ensure_watchdog_running, router as device_ws_router
+from core.services.device_orchestrator import orchestrator as device_orchestrator
+
+from core.startup import migrate_plaintext_api_keys, load_persisted_brain_config, setup_middleware
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -83,6 +106,7 @@ router = MessageRouter(brain=brain)
 router.register_channel(web_channel)
 
 rate_limiter = RateLimiter(redis_url=settings.redis_url, default_rpm=60)
+route_deps.init_recent_events_store(settings.redis_url)
 
 watchdog = ServerWatchdog()
 healer = SelfHealer()
@@ -121,87 +145,13 @@ route_deps.init_shared_state(
 )
 
 
-# ==================== STARTUP HELPERS ====================
-
-async def _migrate_plaintext_api_keys():
-    """One-time migration: encrypt any plaintext API keys in system_knowledge."""
-    from core.database import SystemKnowledge, AsyncSessionLocal
-    from sqlalchemy import select
-
-    try:
-        from core.utils.crypto import is_encrypted, encrypt_value
-    except Exception as e:
-        logger.warning(f"Crypto module unavailable, skipping API key migration: {e}")
-        return
-
-    try:
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(SystemKnowledge).where(
-                    SystemKnowledge.key.like("brain.api_key.%"),
-                    SystemKnowledge.domain == "preference",
-                )
-            )
-            rows = result.scalars().all()
-            migrated = 0
-            for row in rows:
-                if row.value and not is_encrypted(row.value):
-                    row.value = encrypt_value(row.value)
-                    row.updated_at = utcnow()
-                    migrated += 1
-            if migrated:
-                await session.commit()
-                logger.info(f"Migrated {migrated} plaintext API key(s) to encrypted storage")
-            else:
-                logger.debug("No plaintext API keys to migrate")
-    except Exception as e:
-        logger.error(f"Failed to migrate plaintext API keys: {e}")
-
-
-async def _load_persisted_brain_config():
-    """Apply persisted brain settings from DB to runtime settings/brain on startup."""
-    from core.database import SystemKnowledge
-
-    secret_pref_map = {
-        "brain.api_key.anthropic": "anthropic",
-        "brain.api_key.groq": "groq",
-        "brain.api_key.openrouter": "openrouter",
-    }
-    for pref_key, provider in secret_pref_map.items():
-        val = await SystemKnowledge.get_pref(pref_key, default=None)
-        if val:
-            route_deps._apply_runtime_secret(provider, val)
-
-    model_pref_map = {
-        "brain.model.local": "local",
-        "brain.model.groq": "groq",
-        "brain.model.anthropic_fast": "anthropic_fast",
-        "brain.model.anthropic_premium": "anthropic_premium",
-        "brain.model.openrouter": "openrouter",
-    }
-    for pref_key, model_key in model_pref_map.items():
-        val = await SystemKnowledge.get_pref(pref_key, default=None)
-        if val:
-            route_deps._apply_runtime_brain_model(model_key, val)
-
-    claude_source = await SystemKnowledge.get_pref("brain.claude_source", default=None)
-    if claude_source in route_deps.CLAUDE_SOURCES:
-        settings.brain_claude_source = claude_source
-
-    auto_order = await SystemKnowledge.get_pref("brain.auto_provider_order", default=None)
-    if auto_order:
-        settings.brain_auto_provider_order = route_deps._normalize_provider_csv(auto_order)
-
-    provider = await SystemKnowledge.get_pref("brain.provider", default="auto")
-    if provider not in route_deps.BRAIN_PROVIDERS:
-        provider = "auto"
-    brain.switch_provider(provider)
-
-
 # ==================== LIFESPAN ====================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fatal startup guard: reject default/placeholder secrets in production.
+    validate_production_secrets()
+
     await init_db()
     await seed_initial_tenants()
     app.state.rate_limiter = rate_limiter
@@ -213,8 +163,9 @@ async def lifespan(app: FastAPI):
             settings.admin_password_hash = hashed
             logger.info("Admin password auto-migrated to bcrypt hash")
 
-    await _migrate_plaintext_api_keys()
-    await _load_persisted_brain_config()
+    await migrate_plaintext_api_keys()
+    await load_persisted_brain_config(brain)
+    await route_deps.load_recent_events()
     await web_channel.connect()
 
     # WhatsApp (optional)
@@ -259,6 +210,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Skill hot-reload watcher failed to start: {e}")
 
+    # Start Device Army WebSocket watchdog
+    try:
+        await ensure_watchdog_running()
+        logger.info("Device Army WS watchdog started")
+    except Exception as e:
+        logger.warning(f"Device Army WS watchdog failed to start: {e}")
+
+    # Start Device Army orchestrator scheduler
+    try:
+        await device_orchestrator.start_scheduler()
+        logger.info("Device Army orchestrator scheduler started")
+    except Exception as e:
+        logger.warning(f"Device Army orchestrator scheduler failed to start: {e}")
+
     print(f"Sanaa AI is online ({settings.app_env}) — channels: {list(router.channels.keys())}")
     yield
 
@@ -268,6 +233,7 @@ async def lifespan(app: FastAPI):
         await route_deps.whatsapp_adapter.disconnect()
     if route_deps.telegram_adapter:
         await route_deps.telegram_adapter.disconnect()
+    await route_deps.close_recent_events_store()
     await web_channel.disconnect()
     print("Sanaa AI shutting down")
 
@@ -283,27 +249,8 @@ app = FastAPI(
     redoc_url=None,
 )
 
-# Audit Middleware
-try:
-    from core.security.audit_middleware import AuditMiddleware
-    app.add_middleware(AuditMiddleware)
-except ImportError:
-    logger.warning("AuditMiddleware not available — audit logging disabled")
+setup_middleware(app, STATIC_DIR)
 
-# Session middleware (added LAST so it runs FIRST — outermost)
-app.add_middleware(SessionMiddleware, secret_key=settings.app_secret, max_age=86400 * 7)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://ai.sanaa.co"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
-
-# Static files
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ==================== REGISTER ROUTERS ====================
 
@@ -323,3 +270,25 @@ app.include_router(sellers_router)
 app.include_router(tenants_router)
 app.include_router(marketing_router)
 app.include_router(audit_router)
+app.include_router(system_os_router)
+app.include_router(extras_router)
+app.include_router(auth_os_router)
+app.include_router(notes_os_router)
+app.include_router(users_os_router)
+app.include_router(contacts_os_router)
+app.include_router(files_os_router)
+app.include_router(cloud_os_router)
+app.include_router(analytics_os_router)
+app.include_router(soko_os_router)
+app.include_router(papers_os_router)
+app.include_router(app_launcher_router)
+app.include_router(telemetry_router)
+app.include_router(terminal_os_router)
+app.include_router(browser_os_router)
+app.include_router(memory_router)
+app.include_router(brain_intelligence_router)
+app.include_router(brain_graph_router)
+app.include_router(device_army_router)
+app.include_router(account_os_router)
+app.include_router(wallpapers_os_router)
+app.include_router(device_ws_router)

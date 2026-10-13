@@ -2,19 +2,71 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class SanaaEngineService
 {
     protected string $baseUrl;
+
     protected string $apiKey;
+
+    protected ?string $lastError = null;
 
     public function __construct()
     {
         // Internal proxy to the Python backend
-        $this->baseUrl = config('services.sanaa_engine.url', 'http://127.0.0.1:8101/api');
+        $this->baseUrl = config('services.sanaa_engine.url', 'http://127.0.0.1:8100/api');
         $this->apiKey = config('services.sanaa_engine.key', '');
+    }
+
+    /**
+     * HTTP client with authenticated actor context for the Python backend.
+     */
+    protected function client(int $timeout = 30): \Illuminate\Http\Client\PendingRequest
+    {
+        $client = Http::withToken($this->apiKey)->timeout($timeout)->acceptJson();
+
+        if (auth()->check()) {
+            $user = auth()->user();
+            $client = $client->withHeaders([
+                'X-Sanaa-User' => (string) $user->email,
+                'X-Sanaa-Role' => (string) ($user->role ?? 'operator'),
+                'X-Sanaa-Name' => (string) ($user->name ?? $user->email),
+            ]);
+        }
+
+        return $client;
+    }
+
+    /**
+     * Execute a shell command through the secured backend terminal API.
+     */
+    public function executeTerminal(string $command, ?string $cwd = null): array
+    {
+        try {
+            $response = $this->client(190)->post("{$this->baseUrl}/terminal/exec", array_filter([
+                'command' => $command,
+                'cwd' => $cwd ?? '/var/www/ai.sanaa.co',
+            ], fn ($value) => $value !== null));
+
+            if ($response->failed()) {
+                $detail = $response->json('detail', $response->body());
+
+                return [
+                    'success' => false,
+                    'error' => is_string($detail) ? $detail : json_encode($detail),
+                    'returncode' => 1,
+                ];
+            }
+
+            return array_merge($response->json() ?? [], ['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Sanaa Engine Terminal Error: '.$e->getMessage());
+
+            return ['success' => false, 'error' => $e->getMessage(), 'returncode' => 1];
+        }
     }
 
     /**
@@ -24,11 +76,59 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->get("{$this->baseUrl}/status");
-            return $response->json() ?? ['status' => 'offline'];
+
+            if ($response->failed()) {
+                $message = $this->buildHttpFailureMessage('status', $response);
+                $this->recordError('Sanaa Engine Status Failed', $message, $response);
+
+                return ['status' => 'offline', 'error' => $message];
+            }
+
+            $payload = $response->json();
+            if (! is_array($payload) || array_is_list($payload)) {
+                $message = 'Sanaa Engine returned an unexpected status payload. Verify the backend port mapping and API credentials.';
+                $this->recordError('Sanaa Engine Status Payload Error', $message, $response);
+
+                return ['status' => 'offline', 'error' => $message];
+            }
+
+            return $payload;
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Status Error: " . $e->getMessage());
-            return ['status' => 'offline', 'error' => $e->getMessage()];
+            $message = 'Sanaa Engine status request failed: '.$e->getMessage();
+            $this->recordError('Sanaa Engine Status Error', $message);
+
+            return ['status' => 'offline', 'error' => $message];
         }
+    }
+
+    public function clearLastError(): void
+    {
+        $this->lastError = null;
+    }
+
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    protected function buildHttpFailureMessage(string $endpoint, Response $response): string
+    {
+        $details = trim((string) $response->json('error', $response->json('detail', '')));
+        $suffix = $details !== '' ? " ({$details})" : '';
+
+        return "Sanaa Engine {$endpoint} request returned HTTP {$response->status()}{$suffix}. Verify SANAA_ENGINE_URL, Nginx /api proxy, and the antigravity-web service port.";
+    }
+
+    protected function recordError(string $logContext, string $message, ?Response $response = null): void
+    {
+        $this->lastError = $message;
+
+        Log::warning($logContext, array_filter([
+            'message' => $message,
+            'status' => $response?->status(),
+            'body' => $response?->body(),
+            'base_url' => $this->baseUrl,
+        ], fn ($value) => $value !== null));
     }
 
     /**
@@ -37,26 +137,26 @@ class SanaaEngineService
     public function executeCommand(string $command): array
     {
         try {
-            $response = Http::withToken($this->apiKey)
-                ->timeout(120)
-                ->post("{$this->baseUrl}/command", [
-                    'command' => $command,
-                ]);
-                
+            $response = $this->client(120)->post("{$this->baseUrl}/command", [
+                'command' => $command,
+            ]);
+
             if ($response->failed()) {
-                Log::error("Sanaa Engine Command Failed", [
+                Log::error('Sanaa Engine Command Failed', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return [
-                    'error' => 'Backend returned error: ' . $response->status(),
-                    'status' => 'failed'
+                    'error' => 'Backend returned error: '.$response->status(),
+                    'status' => 'failed',
                 ];
             }
-            
+
             return $response->json() ?? ['error' => 'Invalid response format'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Command Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Command Error: '.$e->getMessage());
+
             return ['status' => 'failed', 'error' => $e->getMessage()];
         }
     }
@@ -64,15 +164,15 @@ class SanaaEngineService
     public function executeCommandAsync(string $command): array
     {
         try {
-            $response = Http::withToken($this->apiKey)
-                ->timeout(10)
-                ->post("{$this->baseUrl}/command", [
-                    'command' => $command,
-                    'async' => true,
-                ]);
+            $response = $this->client(10)->post("{$this->baseUrl}/command", [
+                'command' => $command,
+                'async' => true,
+            ]);
+
             return $response->json() ?? ['error' => 'Invalid response'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Async Command Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Async Command Error: '.$e->getMessage());
+
             return ['status' => 'failed', 'error' => $e->getMessage()];
         }
     }
@@ -80,12 +180,12 @@ class SanaaEngineService
     public function getCommandStatus(string $cmdId): array
     {
         try {
-            $response = Http::withToken($this->apiKey)
-                ->timeout(5)
-                ->get("{$this->baseUrl}/command/{$cmdId}");
+            $response = $this->client(5)->get("{$this->baseUrl}/command/{$cmdId}");
+
             return $response->json() ?? ['status' => 'unknown'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Command Status Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Command Status Error: '.$e->getMessage());
+
             return ['status' => 'failed', 'error' => $e->getMessage()];
         }
     }
@@ -103,21 +203,24 @@ class SanaaEngineService
                 ]);
 
             if ($response->successful()) {
-                Log::info("Brain provider switched", ['provider' => $provider]);
+                Log::info('Brain provider switched', ['provider' => $provider]);
+
                 return true;
             }
 
-            Log::error("Failed to switch brain provider", [
+            Log::error('Failed to switch brain provider', [
                 'provider' => $provider,
                 'status' => $response->status(),
-                'body' => $response->body()
+                'body' => $response->body(),
             ]);
+
             return false;
         } catch (\Exception $e) {
-            Log::error("Brain provider switch error", [
+            Log::error('Brain provider switch error', [
                 'provider' => $provider,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -133,16 +236,18 @@ class SanaaEngineService
                 ->get("{$this->baseUrl}/system/brain/config");
 
             if ($response->failed()) {
-                Log::error("Failed to fetch brain config", [
+                Log::error('Failed to fetch brain config', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+
                 return [];
             }
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Brain config fetch error", ['error' => $e->getMessage()]);
+            Log::error('Brain config fetch error', ['error' => $e->getMessage()]);
+
             return [];
         }
     }
@@ -161,14 +266,16 @@ class SanaaEngineService
                 return true;
             }
 
-            Log::error("Failed to update brain config", [
+            Log::error('Failed to update brain config', [
                 'status' => $response->status(),
                 'body' => $response->body(),
                 'payload_keys' => array_keys($payload),
             ]);
+
             return false;
         } catch (\Exception $e) {
-            Log::error("Brain config update error", ['error' => $e->getMessage()]);
+            Log::error('Brain config update error', ['error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -184,9 +291,11 @@ class SanaaEngineService
                 ->get("{$this->baseUrl}/activities", [
                     'limit' => $limit,
                 ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Activities Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Activities Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -200,9 +309,29 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->get("{$this->baseUrl}/intelligence/briefings", [
                 'limit' => $limit,
             ]);
-            return $response->json() ?? [];
+
+            if ($response->failed()) {
+                $this->recordError(
+                    'Sanaa Engine Briefings Failed',
+                    $this->buildHttpFailureMessage('briefings', $response),
+                    $response,
+                );
+
+                return [];
+            }
+
+            $payload = $response->json();
+            if (! is_array($payload) || ! array_is_list($payload)) {
+                $message = 'Sanaa Engine briefings response was not a list. Verify the backend route and proxy target before using the dashboard.';
+                $this->recordError('Sanaa Engine Briefings Payload Error', $message, $response);
+
+                return [];
+            }
+
+            return $payload;
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Briefings Error: " . $e->getMessage());
+            $this->recordError('Sanaa Engine Briefings Error', 'Sanaa Engine briefings request failed: '.$e->getMessage());
+
             return [];
         }
     }
@@ -214,9 +343,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->get("{$this->baseUrl}/intelligence/briefing/{$id}");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Briefing Detail Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Briefing Detail Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -228,9 +359,29 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->get("{$this->baseUrl}/intelligence/latest-signal");
-            return $response->json() ?? ['status' => 'none'];
+
+            if ($response->failed()) {
+                $this->recordError(
+                    'Sanaa Engine Latest Signal Failed',
+                    $this->buildHttpFailureMessage('latest-signal', $response),
+                    $response,
+                );
+
+                return ['status' => 'none'];
+            }
+
+            $payload = $response->json();
+            if (! is_array($payload) || array_is_list($payload)) {
+                $message = 'Sanaa Engine latest signal response was invalid. Verify the backend route and proxy target before using the dashboard.';
+                $this->recordError('Sanaa Engine Latest Signal Payload Error', $message, $response);
+
+                return ['status' => 'none'];
+            }
+
+            return $payload;
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Signal Error: " . $e->getMessage());
+            $this->recordError('Sanaa Engine Signal Error', 'Sanaa Engine latest-signal request failed: '.$e->getMessage());
+
             return ['status' => 'none'];
         }
     }
@@ -245,10 +396,12 @@ class SanaaEngineService
                 ->timeout(10)
                 ->get("{$this->baseUrl}/intelligence/latest-signals", ['limit' => $limit]);
             $data = $response->json();
+
             // Ensure we return a list of items, not an associative error object
-            return (is_array($data) && (!empty($data) ? array_is_list($data) : true)) ? $data : [];
+            return (is_array($data) && (! empty($data) ? array_is_list($data) : true)) ? $data : [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Signals Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Signals Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -262,9 +415,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/intelligence/wisdom");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Wisdom Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Wisdom Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -278,9 +433,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/alerts", ['limit' => $limit]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Alerts Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Alerts Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -295,9 +452,11 @@ class SanaaEngineService
                 'key' => $key,
                 'value' => $value,
             ]);
+
             return $response->successful();
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Preference Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Preference Error: '.$e->getMessage());
+
             return false;
         }
     }
@@ -312,9 +471,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/system/preferences", [
                 'keys' => $keysStr,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Get Preferences Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Get Preferences Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -323,9 +484,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/system/tool-policy");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tool Policy Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tool Policy Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -334,9 +497,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->post("{$this->baseUrl}/system/tool-policy", $payload);
+
             return $response->json() ?? ['status' => 'failed'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tool Policy Update Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tool Policy Update Error: '.$e->getMessage());
+
             return ['status' => 'failed', 'error' => $e->getMessage()];
         }
     }
@@ -345,9 +510,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Skills Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Skills Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -447,9 +614,11 @@ class SanaaEngineService
         $endpoint = $enabled ? 'enable' : 'disable';
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/skills/{$skill}/{$endpoint}");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Skill Toggle Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Skill Toggle Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -460,9 +629,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/skills/{$skill}/exposure", [
                 'exposure' => $exposure,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Skill Exposure Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Skill Exposure Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -470,15 +641,13 @@ class SanaaEngineService
     /**
      * Run a specific skill with the given arguments.
      */
-    public function runSkill(string $skillName, array $args = [], string $sessionId = '', int $timeout = 60): array
+    public function runSkill(string $skillName, array $args = [], string $sessionId = '', int $timeout = 120): array
     {
         try {
-            $response = Http::withToken($this->apiKey)
-                ->timeout($timeout)
-                ->post("{$this->baseUrl}/skills/{$skillName}/run", [
-                    'args' => $args,
-                    'session_id' => $sessionId ?: 'admin:skills_center',
-                ]);
+            $response = $this->client($timeout)->post("{$this->baseUrl}/skills/{$skillName}/run", [
+                'args' => $args,
+                'session_id' => $sessionId ?: 'admin:skills_center',
+            ]);
             $json = $response->json() ?? [];
 
             // The backend wraps skill results in 'detail' on 400 responses
@@ -487,11 +656,13 @@ class SanaaEngineService
                 return $json['detail'];
             }
             if ($response->failed()) {
-                return ['success' => false, 'error' => 'HTTP ' . $response->status() . ': ' . $response->body()];
+                return ['success' => false, 'error' => 'HTTP '.$response->status().': '.$response->body()];
             }
+
             return $json ?: ['success' => false, 'error' => 'Empty response'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Skill Run Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Skill Run Error: '.$e->getMessage());
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
@@ -528,9 +699,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/workflows");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflows Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflows Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -539,9 +712,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/workflows/runs", ['limit' => $limit]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Runs Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Runs Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -552,9 +727,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(20)->post("{$this->baseUrl}/workflows/{$workflowName}/run", [
                 'args' => $args,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Start Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Start Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -563,9 +740,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/workflows/runs/{$runId}");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Run Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Run Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -574,9 +753,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/workflows/runs/{$runId}/approval");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Approval Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Approval Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -588,9 +769,11 @@ class SanaaEngineService
                 'approved' => $approved,
                 'resume_token' => $resumeToken,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Resume Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Resume Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -599,9 +782,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/workflows/runs/{$runId}/cancel");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Cancel Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Cancel Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -620,7 +805,8 @@ class SanaaEngineService
 
             return $response->json() ?? ['status' => 'saved'];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Workflow Save Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Workflow Save Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -629,9 +815,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/system/session-policy");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Session Policy Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Session Policy Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -640,9 +828,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->post("{$this->baseUrl}/system/session-policy", $payload);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Session Policy Update Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Session Policy Update Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -730,9 +920,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/ml/scores");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Scores Error: " . $e->getMessage());
+            Log::error('Sanaa ML Scores Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -741,9 +933,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/{$skillName}/ml/score");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Skill Score Error: " . $e->getMessage());
+            Log::error('Sanaa ML Skill Score Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -755,9 +949,11 @@ class SanaaEngineService
                 'period' => $period,
                 'limit' => $limit,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Metrics Error: " . $e->getMessage());
+            Log::error('Sanaa ML Metrics Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -771,9 +967,11 @@ class SanaaEngineService
                 'comment' => $comment,
                 'skill_run_id' => $runId,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Feedback Error: " . $e->getMessage());
+            Log::error('Sanaa ML Feedback Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -784,9 +982,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/skills/{$skillName}/ml/learning", [
                 'limit' => $limit,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Learning Log Error: " . $e->getMessage());
+            Log::error('Sanaa ML Learning Log Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -795,9 +995,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/skills/{$skillName}/ml/parameters");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Parameters Error: " . $e->getMessage());
+            Log::error('Sanaa ML Parameters Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -806,9 +1008,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(60)->post("{$this->baseUrl}/skills/ml/analyze");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Analysis Error: " . $e->getMessage());
+            Log::error('Sanaa ML Analysis Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -819,9 +1023,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/skills/ml/learning-log", [
                 'limit' => $limit,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa ML Global Learning Log Error: " . $e->getMessage());
+            Log::error('Sanaa ML Global Learning Log Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -830,9 +1036,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/sessions", ['limit' => $limit]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Sessions Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Sessions Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -841,9 +1049,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/sessions/{$sessionId}");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Session Detail Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Session Detail Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -852,9 +1062,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/sessions/{$sessionId}/reset");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Session Reset Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Session Reset Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -865,9 +1077,11 @@ class SanaaEngineService
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/sessions/{$sessionId}/send-policy", [
                 'mode' => $mode,
             ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Session Send Policy Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Session Send Policy Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -876,9 +1090,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(20)->get("{$this->baseUrl}/system/doctor");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Doctor Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Doctor Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -887,9 +1103,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/intelligence/advisor/watchdog");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Watchdog Advisor Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Watchdog Advisor Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -898,9 +1116,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/intelligence/briefings/qa/latest");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Briefing QA Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Briefing QA Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -914,9 +1134,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/metrics");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Marketing Metrics Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Marketing Metrics Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -928,9 +1150,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/social");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Social Analytics Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Social Analytics Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -942,9 +1166,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/marketing/calendar");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Scheduled Content Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Scheduled Content Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -965,9 +1191,11 @@ class SanaaEngineService
                 $params['category'] = $category;
             }
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/memories", $params);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Memories Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Memories Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -983,9 +1211,11 @@ class SanaaEngineService
                 $params['log_type'] = $type;
             }
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/learning-logs", $params);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Learning Logs Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Learning Logs Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -999,9 +1229,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->get("{$this->baseUrl}/tenants");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tenants Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tenants Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -1013,9 +1245,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(15)->get("{$this->baseUrl}/tenants/health");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tenant Health Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tenant Health Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -1027,9 +1261,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/tenants/{$id}/enable");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tenant Enable Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tenant Enable Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -1041,9 +1277,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(10)->post("{$this->baseUrl}/tenants/{$id}/disable");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tenant Disable Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tenant Disable Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -1055,9 +1293,11 @@ class SanaaEngineService
     {
         try {
             $response = Http::withToken($this->apiKey)->timeout(20)->post("{$this->baseUrl}/tenants/{$id}/check");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Tenant Check Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Tenant Check Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -1081,7 +1321,8 @@ class SanaaEngineService
 
             return $response->json() ?? ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => $perPage, 'pages' => 0];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Audit Logs Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Audit Logs Error: '.$e->getMessage());
+
             return ['items' => [], 'total' => 0, 'page' => 1, 'per_page' => $perPage, 'pages' => 0];
         }
     }
@@ -1097,9 +1338,11 @@ class SanaaEngineService
             // OpenAPI spec is served at the root path, not under /api
             $rootUrl = str_replace('/api', '', $this->baseUrl);
             $response = Http::timeout(15)->get("{$rootUrl}/openapi.json");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine OpenAPI Spec Error: " . $e->getMessage());
+            Log::error('Sanaa Engine OpenAPI Spec Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -1116,7 +1359,8 @@ class SanaaEngineService
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Audit Log Entry Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Audit Log Entry Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -1135,7 +1379,8 @@ class SanaaEngineService
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Alert Rules Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Alert Rules Error: '.$e->getMessage());
+
             return [];
         }
     }
@@ -1152,7 +1397,8 @@ class SanaaEngineService
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Create Alert Rule Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Create Alert Rule Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -1169,7 +1415,8 @@ class SanaaEngineService
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Update Alert Rule Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Update Alert Rule Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -1186,8 +1433,385 @@ class SanaaEngineService
 
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("Sanaa Engine Delete Alert Rule Error: " . $e->getMessage());
+            Log::error('Sanaa Engine Delete Alert Rule Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
+        }
+    }
+
+    // ── SanaaBrain Memory API ─────────────────────────────────────────────
+
+    /**
+     * Add a new memory entry to the persistent store.
+     */
+    public function addMemory(
+        string $content,
+        string $category = 'general',
+        ?string $project = null,
+        array $metadata = [],
+        float $confidence = 1.0
+    ): array {
+        try {
+            $payload = [
+                'content' => $content,
+                'category' => $category,
+                'confidence' => $confidence,
+                'metadata' => $metadata,
+            ];
+            if ($project !== null && $project !== '') {
+                $payload['project'] = $project;
+            }
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(20)
+                ->post("{$this->baseUrl}/memory/add", $payload);
+
+            return $response->json() ?? ['error' => 'Empty response'];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain addMemory Error: '.$e->getMessage());
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Semantic search across stored memories.
+     * Returns the array of result records directly (not the wrapper object).
+     */
+    public function searchMemory(
+        string $query,
+        int $limit = 10,
+        ?string $category = null,
+        ?string $project = null
+    ): array {
+        try {
+            $params = ['query' => $query, 'limit' => $limit];
+            if ($category !== null && $category !== '') {
+                $params['category'] = $category;
+            }
+            if ($project !== null && $project !== '') {
+                $params['project'] = $project;
+            }
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(20)
+                ->get("{$this->baseUrl}/memory/search", $params);
+
+            $data = $response->json() ?? [];
+
+            // API wraps results in {"query":…,"results":[…]}; return just the list.
+            return $data['results'] ?? (array_is_list($data) ? $data : []);
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain searchMemory Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Get a formatted markdown briefing for a project's top memories.
+     */
+    public function getMemoryBriefing(string $project): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/memory/briefing/{$project}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getMemoryBriefing Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * List all memories with optional filters and pagination.
+     */
+    public function getAllMemories(
+        ?string $project = null,
+        ?string $category = null,
+        int $limit = 50,
+        int $offset = 0
+    ): array {
+        try {
+            $params = ['limit' => $limit, 'offset' => $offset];
+            if ($project !== null && $project !== '') {
+                $params['project'] = $project;
+            }
+            if ($category !== null && $category !== '') {
+                $params['category'] = $category;
+            }
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/memory/all", $params);
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getAllMemories Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Save a session log as a memory entry.
+     */
+    public function saveMemorySession(
+        string $content,
+        string $sessionId = 'admin:sanaa-brain',
+        ?string $project = null
+    ): array {
+        try {
+            $payload = ['content' => $content, 'session_id' => $sessionId];
+            if ($project !== null && $project !== '') {
+                $payload['project'] = $project;
+            }
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(20)
+                ->post("{$this->baseUrl}/memory/session/save", $payload);
+
+            return $response->json() ?? ['error' => 'Empty response'];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain saveMemorySession Error: '.$e->getMessage());
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Delete a single memory entry by ID.
+     */
+    public function deleteMemory(int $memoryId): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(10)
+                ->delete("{$this->baseUrl}/memory/{$memoryId}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain deleteMemory Error: '.$e->getMessage());
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    // ── SanaaBrain Intelligence API ───────────────────────────────────────
+
+    /**
+     * Get auto-learned brain insights, optionally filtered by category and project.
+     */
+    public function getBrainInsights(string $category = '', string $project = ''): array
+    {
+        try {
+            $params = ['limit' => 50];
+            if ($category !== '') {
+                $params['category'] = $category;
+            }
+            if ($project !== '') {
+                $params['project'] = $project;
+            }
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout(20)
+                ->get("{$this->baseUrl}/brain/insights", $params);
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getBrainInsights Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Get the last 4 weekly habit intelligence entries.
+     */
+    public function getBrainHabits(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/brain/habits");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getBrainHabits Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Get a smart briefing for a project (enhanced multi-section briefing).
+     */
+    public function getSmartBriefing(string $project): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(30)
+                ->get("{$this->baseUrl}/brain/smart_briefing/{$project}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getSmartBriefing Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Trigger the SanaaBrain learner synchronously (learn_now).
+     */
+    public function triggerLearnNow(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(130)
+                ->post("{$this->baseUrl}/brain/learn_now");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain triggerLearnNow Error: '.$e->getMessage());
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get LLM resource usage summaries from the last 7 days.
+     */
+    public function getResourceUsage(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/brain/resource_usage");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getResourceUsage Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Get client intelligence entries (tenant health, at-risk clients).
+     */
+    public function getClientIntelligence(): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->get("{$this->baseUrl}/brain/client_intelligence");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain getClientIntelligence Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Delete all memories belonging to a project.
+     */
+    public function clearProjectMemory(string $project): array
+    {
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->timeout(15)
+                ->delete("{$this->baseUrl}/memory/clear/{$project}");
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('SanaaBrain clearProjectMemory Error: '.$e->getMessage());
+
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Aggregate Device Army statistics from the Python backend.
+     */
+    public function getDeviceArmyStats(): array
+    {
+        try {
+            $response = $this->client(10)->get("{$this->baseUrl}/device-army/stats");
+
+            if ($response->failed()) {
+                $this->recordError('Sanaa Engine Device Army Stats Failed', $this->buildHttpFailureMessage('device-army/stats', $response), $response);
+
+                return [];
+            }
+
+            return $response->json() ?? [];
+        } catch (\Exception $e) {
+            Log::error('Sanaa Engine Device Army Stats Error: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * List connected Device Army workers for dock and dashboard surfaces.
+     */
+    public function getDeviceArmyDevices(int $limit = 8): array
+    {
+        try {
+            $response = $this->client(10)->get("{$this->baseUrl}/device-army/devices", [
+                'limit' => $limit,
+            ]);
+
+            if ($response->failed()) {
+                $this->recordError('Sanaa Engine Device Army Devices Failed', $this->buildHttpFailureMessage('device-army/devices', $response), $response);
+
+                return ['devices' => []];
+            }
+
+            $payload = $response->json() ?? [];
+            $devices = collect($payload['devices'] ?? [])->take($limit)->values()->all();
+
+            return [
+                'total' => (int) ($payload['total'] ?? count($devices)),
+                'devices' => $devices,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Sanaa Engine Device Army Devices Error: '.$e->getMessage());
+
+            return ['devices' => []];
+        }
+    }
+
+    /**
+     * Soko marketplace pulse for dock badge and live shell data.
+     */
+    public function getSokoPulse(): array
+    {
+        try {
+            $response = $this->client(8)->get("{$this->baseUrl}/soko/pulse", ['limit' => 12]);
+
+            if ($response->failed()) {
+                return ['badge' => 0, 'success' => false];
+            }
+
+            $payload = $response->json() ?? [];
+
+            return [
+                'success' => (bool) ($payload['success'] ?? false),
+                'badge' => (int) ($payload['badge'] ?? 0),
+                'summary' => $payload['summary'] ?? [],
+                'needs_you_count' => count($payload['needs_you'] ?? []),
+            ];
+        } catch (\Exception $e) {
+            Log::debug('Soko pulse unavailable: '.$e->getMessage());
+
+            return ['badge' => 0, 'success' => false];
         }
     }
 }

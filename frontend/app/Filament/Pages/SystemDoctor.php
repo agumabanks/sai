@@ -8,12 +8,17 @@ use Filament\Pages\Page;
 class SystemDoctor extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-heart';
-    protected static ?string $navigationGroup = 'Operations';
-    protected static ?int $navigationSort = 4;
+
+    protected static ?string $navigationGroup = 'System';
+
+    protected static ?int $navigationSort = 1;
+
     protected static string $view = 'filament.pages.system-doctor';
 
     public array $report = [];
+
     public array $watchdogAdvisor = [];
+
     public array $briefingQa = [];
 
     public function mount(): void
@@ -29,4 +34,3 @@ class SystemDoctor extends Page
         $this->briefingQa = $engine->getLatestBriefingQa();
     }
 }
-

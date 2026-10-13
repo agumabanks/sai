@@ -9,10 +9,11 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
+from core.brain import get_shared_brain
 from core.config import get_settings
 from core.database import AuditLog
 from core.routes import deps
-from core.routes.deps import require_auth
+from core.routes.deps import require_auth, require_user_admin, RateLimit
 from core.policies import (
     get_tool_policy,
     save_tool_policy,
@@ -125,7 +126,11 @@ async def get_tool_policy_api(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/system/tool-policy")
-async def update_tool_policy_api(body: ToolPolicyUpdateRequest, user: dict = Depends(require_auth)):
+async def update_tool_policy_api(
+    body: ToolPolicyUpdateRequest,
+    user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=30)),
+):
     """Update AI tool policy (partial update)."""
     await deps.brain.ensure_skills_loaded()
     payload = body.model_dump(exclude_none=True)
@@ -143,7 +148,11 @@ async def get_session_policy_api(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/system/session-policy")
-async def update_session_policy_api(body: SessionPolicyUpdateRequest, user: dict = Depends(require_auth)):
+async def update_session_policy_api(
+    body: SessionPolicyUpdateRequest,
+    user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=30)),
+):
     """Update session safety/reset/send policy (partial update)."""
     payload = body.model_dump(exclude_none=True)
     policy = await save_session_policy(payload, source="admin_dashboard")
@@ -151,7 +160,11 @@ async def update_session_policy_api(body: SessionPolicyUpdateRequest, user: dict
 
 
 @router.post("/api/system/brain/provider")
-async def set_provider(request: Request, user: dict = Depends(require_auth)):
+async def set_provider(
+    request: Request,
+    user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=30)),
+):
     """Set the active LLM provider."""
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
@@ -163,9 +176,10 @@ async def set_provider(request: Request, user: dict = Depends(require_auth)):
 
     provider = provider.lower()
     if provider not in deps.BRAIN_PROVIDERS:
-        raise HTTPException(400, "Invalid provider. Choose: auto, local, groq, claude, openrouter")
+        raise HTTPException(400, "Invalid provider. Choose: auto, local, groq, claude, openrouter, soldier")
 
     deps.brain.switch_provider(provider)
+    get_shared_brain().switch_provider(provider)
     from core.database import SystemKnowledge
     await SystemKnowledge.set_pref("brain.provider", provider, source="api")
 
@@ -182,8 +196,13 @@ async def get_brain_config(user: dict = Depends(require_auth)):
 
 
 @router.post("/api/system/brain/config")
-async def update_brain_config(request: Request, user: dict = Depends(require_auth)):
+async def update_brain_config(
+    request: Request,
+    user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=30)),
+):
     """Update brain provider/source/models/keys from admin dashboard."""
+    require_user_admin(user)
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(400, "Invalid request body")
@@ -226,6 +245,13 @@ async def update_brain_config(request: Request, user: dict = Depends(require_aut
             deps._apply_runtime_secret(provider_key, secret)
             await SystemKnowledge.set_pref(f"brain.api_key.{provider_key}", secret, source="admin_dashboard")
 
+    model_id = str(body.get("model_id", "") or "").strip()
+    if model_id:
+        target_provider = provider or deps.brain.get_current_provider() or "auto"
+        models = body.get("models") or {}
+        models[deps._model_key_for_provider(target_provider, claude_source or settings.brain_claude_source)] = model_id
+        body["models"] = models
+
     models = body.get("models") or {}
     model_pref_map = {
         "local": "brain.model.local",
@@ -233,6 +259,7 @@ async def update_brain_config(request: Request, user: dict = Depends(require_aut
         "anthropic_fast": "brain.model.anthropic_fast",
         "anthropic_premium": "brain.model.anthropic_premium",
         "openrouter": "brain.model.openrouter",
+        "soldier": "brain.model.soldier",
     }
     if isinstance(models, dict):
         for model_key, pref_key in model_pref_map.items():
@@ -245,6 +272,8 @@ async def update_brain_config(request: Request, user: dict = Depends(require_aut
             await SystemKnowledge.set_pref(pref_key, model_value, source="admin_dashboard")
 
     deps.brain.registry.models = deps.brain.registry._build_model_chain()
+    shared_brain = get_shared_brain()
+    shared_brain.switch_provider(deps.brain.get_current_provider())
 
     return {"status": "success", "config": await deps._brain_config_snapshot()}
 
@@ -262,7 +291,11 @@ async def get_preferences(request: Request, keys: str = Query(..., description="
 
 
 @router.post("/api/system/preference")
-async def update_preference(request: Request, user: dict = Depends(require_auth)):
+async def update_preference(
+    request: Request,
+    user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=60)),
+):
     """Update a system preference and persist it in system_knowledge."""
     body = await request.json()
     key = body.get("key")

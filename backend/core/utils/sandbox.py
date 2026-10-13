@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 import resource
 import subprocess
 import logging
@@ -31,31 +32,64 @@ class ExecutionSandbox:
             return {"success": False, "error": "Script not found"}
 
         cmd = [sys.executable, script_path] + (args or [])
-        
+        return await self.execute_command(cmd)
+
+    async def execute_command(
+        self,
+        argv: list[str],
+        cwd: Optional[str] = None,
+        env: Optional[dict] = None,
+        timeout: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Run an explicit argument list with shell=False and resource limits.
+
+        Args:
+            argv: Command argument list (first item is the executable).
+            cwd: Optional working directory for the subprocess.
+            env: Optional environment dictionary.
+            timeout: Optional per-command timeout (defaults to self.timeout).
+
+        Returns:
+            Dict with success, returncode, stdout, stderr and/or error.
+        """
+        if not argv:
+            return {"success": False, "error": "Empty command"}
+
+        for arg in argv:
+            if not isinstance(arg, str):
+                return {"success": False, "error": "Invalid argument type"}
+
+        executable = argv[0]
+        if executable.startswith("/") and not os.path.exists(executable):
+            return {"success": False, "error": f"Executable not found: {executable}"}
+
         try:
-            # Note: On Linux, we could use unshare for deeper isolation,
-            # but for now, we'll stick to resource limits and preexec_fn.
             process = await asyncio.create_subprocess_exec(
-                *cmd,
+                *argv,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                preexec_fn=self._set_limits
+                cwd=cwd,
+                env=env,
+                preexec_fn=self._set_limits,
             )
-            
+
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.timeout + 5)
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=(timeout or self.timeout) + 5
+                )
                 return {
                     "success": process.returncode == 0,
                     "returncode": process.returncode,
-                    "stdout": stdout.decode(),
-                    "stderr": stderr.decode()
+                    "stdout": stdout.decode(errors="replace"),
+                    "stderr": stderr.decode(errors="replace"),
                 }
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                except Exception:
+                    pass
                 return {"success": False, "error": "Execution timed out"}
-                
+
         except Exception as e:
             logger.error(f"Sandbox execution failed: {e}")
             return {"success": False, "error": str(e)}
-
-import asyncio

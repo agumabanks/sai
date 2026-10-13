@@ -8,13 +8,19 @@ use Filament\Pages\Page;
 
 class AuditLogViewer extends Page
 {
-    protected static ?string $navigationIcon    = 'heroicon-o-clipboard-document-list';
-    protected static ?string $navigationGroup   = 'System';
-    protected static ?int    $navigationSort    = 20;
-    protected static string  $view              = 'filament.pages.audit-log-viewer';
-    protected static ?string $title             = 'Audit Log';
-    protected static ?string $navigationLabel   = 'Audit Log';
-    protected static ?string $slug              = 'audit-log';
+    protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-list';
+
+    protected static ?string $navigationGroup = 'System';
+
+    protected static ?int $navigationSort = 20;
+
+    protected static string $view = 'filament.pages.audit-log-viewer';
+
+    protected static ?string $title = 'Audit Log';
+
+    protected static ?string $navigationLabel = 'Audit Log';
+
+    protected static ?string $slug = 'audit-log';
 
     // ── Page state ────────────────────────────────────────────────────────
 
@@ -27,20 +33,27 @@ class AuditLogViewer extends Page
     // ── Filters ───────────────────────────────────────────────────────────
 
     public string $filterDateFrom = '';
+
     public string $filterDateTo = '';
+
     public string $filterAction = '';
+
     public string $filterActor = '';
+
     public string $filterPath = '';
-    public ?bool  $filterSuccess = null;
+
+    public ?bool $filterSuccess = null;
 
     // ── Pagination ────────────────────────────────────────────────────────
 
     public int $currentPage = 1;
+
     public int $perPage = 50;
 
     // ── Sort ──────────────────────────────────────────────────────────────
 
     public string $sortField = 'timestamp';
+
     public string $sortDirection = 'desc';
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -171,11 +184,12 @@ class AuditLogViewer extends Page
      */
     public function formatTimestamp(?string $timestamp): string
     {
-        if (!$timestamp) {
+        if (! $timestamp) {
             return '—';
         }
         try {
             $dt = new \DateTime($timestamp);
+
             return $dt->format('M j, Y H:i:s');
         } catch (\Exception $e) {
             return $timestamp;
@@ -187,10 +201,11 @@ class AuditLogViewer extends Page
      */
     public function getMethod(?string $action): string
     {
-        if (!$action) {
+        if (! $action) {
             return '—';
         }
         $parts = explode(' ', $action, 2);
+
         return $parts[0] ?? $action;
     }
 
@@ -199,10 +214,11 @@ class AuditLogViewer extends Page
      */
     public function getPath(?string $action): string
     {
-        if (!$action) {
+        if (! $action) {
             return '—';
         }
         $parts = explode(' ', $action, 2);
+
         return $parts[1] ?? $action;
     }
 
@@ -212,12 +228,12 @@ class AuditLogViewer extends Page
     public function getMethodBadge(string $method): string
     {
         return match (strtoupper($method)) {
-            'GET'    => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
-            'POST'   => 'text-[#0a84ff] bg-[#0a84ff]/10 border-[#0a84ff]/20',
-            'PUT'    => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
-            'PATCH'  => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
+            'GET' => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
+            'POST' => 'text-[#0a84ff] bg-[#0a84ff]/10 border-[#0a84ff]/20',
+            'PUT' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
+            'PATCH' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
             'DELETE' => 'text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20',
-            default  => 'text-white/40 bg-white/5 border-white/10',
+            default => 'text-white/40 bg-white/5 border-white/10',
         };
     }
 

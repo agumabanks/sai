@@ -1,0 +1,28 @@
+name: team_broadcast
+description: "Send messages to team channels via WhatsApp (WhatsJet), email (SMTP), or Telegram. Supports single recipients, multi-recipient lists, custom email subjects, and Telegram chat IDs."
+version: "2.0.0"
+category: "communication"
+tags: ["whatsapp", "telegram", "email", "broadcast", "team", "message", "group", "jarvis"]
+requires_approval: true
+parameters:
+  channel:
+    type: string
+    description: "Channel: whatsapp, email, telegram"
+    required: true
+    enum: ["whatsapp", "email", "telegram"]
+  message:
+    type: string
+    description: "The message content to broadcast"
+    required: true
+  recipient:
+    type: string
+    description: "Single recipient: phone number (whatsapp), email address, or Telegram chat_id"
+    required: false
+  recipients:
+    type: array
+    description: "List of recipients for multi-broadcast (alternative to 'recipient')"
+    required: false
+  subject:
+    type: string
+    description: "Email subject line (for 'email' channel, default: '[Sanaa AI] Team Broadcast')"
+    required: false

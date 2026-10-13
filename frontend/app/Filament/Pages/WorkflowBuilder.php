@@ -9,16 +9,23 @@ use Filament\Pages\Page;
 class WorkflowBuilder extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-arrow-path';
+
     protected static ?string $navigationGroup = 'Skills Lab';
+
     protected static ?int $navigationSort = 3;
+
     protected static string $view = 'filament.pages.workflow-builder';
+
     protected static ?string $title = 'Workflow Builder';
+
     protected static ?string $navigationLabel = 'Workflow Builder';
 
     // ── Workflow metadata ─────────────────────────────────────────────────
 
     public string $workflowName = '';
+
     public string $workflowDescription = '';
+
     public string $workflowVersion = '1.0.0';
 
     // ── Builder state ─────────────────────────────────────────────────────
@@ -225,7 +232,7 @@ class WorkflowBuilder extends Page
 
         foreach ($this->workflowSteps as $step) {
             $stepDef = [
-                'id' => $step['id'] ?? 'step_' . count($steps),
+                'id' => $step['id'] ?? 'step_'.count($steps),
                 'action' => $this->resolveAction($step['type']),
                 'description' => $step['description'] ?? '',
                 'params' => $this->buildStepParams($step),
@@ -275,11 +282,13 @@ class WorkflowBuilder extends Page
     {
         if (trim($this->workflowName) === '') {
             Notification::make()->title('Workflow name is required')->warning()->send();
+
             return;
         }
 
         if (empty($this->workflowSteps)) {
             Notification::make()->title('Add at least one step')->warning()->send();
+
             return;
         }
 
@@ -288,12 +297,13 @@ class WorkflowBuilder extends Page
         $engine = app(SanaaEngineService::class);
         $result = $engine->saveWorkflow($this->generatedYaml);
 
-        if (!empty($result['error'])) {
+        if (! empty($result['error'])) {
             Notification::make()
                 ->title('Failed to save workflow')
                 ->body((string) $result['error'])
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -318,8 +328,9 @@ class WorkflowBuilder extends Page
             }
         }
 
-        if (!$workflow) {
+        if (! $workflow) {
             Notification::make()->title("Workflow not found: {$name}")->danger()->send();
+
             return;
         }
 
@@ -332,7 +343,7 @@ class WorkflowBuilder extends Page
             $type = $this->resolveType($step['action'] ?? 'skill');
             $this->workflowSteps[] = [
                 'type' => $type,
-                'id' => $step['id'] ?? 'step_' . count($this->workflowSteps),
+                'id' => $step['id'] ?? 'step_'.count($this->workflowSteps),
                 'description' => $step['description'] ?? '',
                 'config' => $this->extractConfig($step, $type),
             ];
@@ -363,7 +374,7 @@ class WorkflowBuilder extends Page
      */
     public function toggleYamlPreview(): void
     {
-        if (!$this->showYamlPreview) {
+        if (! $this->showYamlPreview) {
             $this->generateYaml();
         } else {
             $this->showYamlPreview = false;
@@ -387,7 +398,7 @@ class WorkflowBuilder extends Page
             default => 'step',
         };
 
-        return $prefix . '_' . ($index + 1);
+        return $prefix.'_'.($index + 1);
     }
 
     /**
@@ -511,7 +522,7 @@ class WorkflowBuilder extends Page
         return match ($type) {
             'skill' => [
                 'skill_name' => $params['skill'] ?? '',
-                'args' => json_encode($params['args'] ?? new \stdClass(), JSON_PRETTY_PRINT),
+                'args' => json_encode($params['args'] ?? new \stdClass, JSON_PRETTY_PRINT),
                 'description' => $step['description'] ?? '',
                 'on_failure' => $step['on_failure'] ?? 'abort',
                 'timeout' => $step['timeout'] ?? 60,
@@ -549,10 +560,11 @@ class WorkflowBuilder extends Page
     protected function parseJsonConfig(string $json): array|object
     {
         $decoded = json_decode($json, true);
-        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
-            return new \stdClass();
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            return new \stdClass;
         }
-        return $decoded ?: new \stdClass();
+
+        return $decoded ?: new \stdClass;
     }
 
     /**
@@ -567,7 +579,7 @@ class WorkflowBuilder extends Page
             if (is_int($key)) {
                 // List item
                 if (is_array($value)) {
-                    $yaml .= $prefix . "- ";
+                    $yaml .= $prefix.'- ';
                     $first = true;
                     foreach ($value as $subKey => $subValue) {
                         if ($first) {
@@ -578,7 +590,7 @@ class WorkflowBuilder extends Page
                         }
                     }
                 } else {
-                    $yaml .= $prefix . "- " . $this->formatYamlValue($value) . "\n";
+                    $yaml .= $prefix.'- '.$this->formatYamlValue($value)."\n";
                 }
             } else {
                 $yaml .= $this->formatYamlKeyValue($key, $value, $indent);
@@ -597,29 +609,31 @@ class WorkflowBuilder extends Page
 
         if (is_array($value)) {
             if (empty($value)) {
-                return $prefix . $key . ": {}\n";
+                return $prefix.$key.": {}\n";
             }
 
             // Check if it's a list
             if (array_is_list($value)) {
-                $result = $prefix . $key . ":\n";
+                $result = $prefix.$key.":\n";
                 foreach ($value as $item) {
                     if (is_array($item)) {
                         $result .= $this->arrayToYaml([$item], $indent + 1);
                     } else {
-                        $result .= str_repeat('  ', $indent + 1) . "- " . $this->formatYamlValue($item) . "\n";
+                        $result .= str_repeat('  ', $indent + 1).'- '.$this->formatYamlValue($item)."\n";
                     }
                 }
+
                 return $result;
             }
 
             // Associative array
-            $result = $prefix . $key . ":\n";
+            $result = $prefix.$key.":\n";
             $result .= $this->arrayToYaml($value, $indent + 1);
+
             return $result;
         }
 
-        return $prefix . $key . ": " . $this->formatYamlValue($value) . "\n";
+        return $prefix.$key.': '.$this->formatYamlValue($value)."\n";
     }
 
     /**
@@ -639,17 +653,19 @@ class WorkflowBuilder extends Page
         if (is_string($value)) {
             // Quote strings with special characters or multi-line
             if ($value === '' || str_contains($value, "\n") || str_contains($value, ':') || str_contains($value, '#') || str_contains($value, '{') || str_contains($value, '}') || str_contains($value, '[') || str_contains($value, ']')) {
-                return '"' . addcslashes($value, '"\\') . '"';
+                return '"'.addcslashes($value, '"\\').'"';
             }
             // Quote strings that look like booleans or numbers
             if (in_array(strtolower($value), ['true', 'false', 'null', 'yes', 'no'], true)) {
-                return '"' . $value . '"';
+                return '"'.$value.'"';
             }
+
             return $value;
         }
         if ($value instanceof \stdClass) {
             return '{}';
         }
+
         return (string) $value;
     }
 }

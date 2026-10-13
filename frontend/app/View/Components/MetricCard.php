@@ -24,7 +24,7 @@ class MetricCard extends Component
 
     public function colorClasses(): string
     {
-        return match($this->color) {
+        return match ($this->color) {
             'indigo' => 'text-sanaa-indigo border-sanaa-indigo/20 bg-sanaa-indigo/5',
             'emerald' => 'text-sanaa-emerald border-sanaa-emerald/20 bg-sanaa-emerald/5',
             'cyan' => 'text-sanaa-cyan border-sanaa-cyan/20 bg-sanaa-cyan/5',
@@ -37,7 +37,7 @@ class MetricCard extends Component
 
     public function iconColorClasses(): string
     {
-        return match($this->color) {
+        return match ($this->color) {
             'indigo' => 'text-sanaa-indigo',
             'emerald' => 'text-sanaa-emerald',
             'cyan' => 'text-sanaa-cyan',
@@ -50,7 +50,7 @@ class MetricCard extends Component
 
     public function glowClasses(): string
     {
-        return match($this->color) {
+        return match ($this->color) {
             'indigo' => 'shadow-[0_0_20px_rgba(99,102,241,0.2)]',
             'emerald' => 'shadow-[0_0_20px_rgba(16,185,129,0.2)]',
             'cyan' => 'shadow-[0_0_20px_rgba(6,182,212,0.2)]',

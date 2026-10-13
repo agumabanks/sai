@@ -1,12 +1,5 @@
 <x-filament-panels::page class="relative">
-    {{-- Ambient Background --}}
-    <div class="fixed inset-0 z-0 pointer-events-none w-full h-full overflow-hidden">
-        <div class="absolute inset-0 bg-[#000000]"></div>
-        <div class="absolute top-[-20%] left-[10%] w-[60vw] h-[60vw] bg-[#06b6d4]/15 blur-[140px] rounded-[100%] mix-blend-screen opacity-50"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-[#a855f7]/10 blur-[120px] rounded-[100%] mix-blend-screen opacity-40"></div>
-    </div>
-
-    <div class="relative z-10 space-y-6 max-w-[1400px] mx-auto">
+    <div class="relative z-10 space-y-5 max-w-[1280px] mx-auto">
 
         {{-- ── Header ──────────────────────────────────────────────────────── --}}
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -37,7 +30,8 @@
         </div>
 
         {{-- ── Tab Navigation ──────────────────────────────────────────────── --}}
-        <div class="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-md w-fit">
+        <div class="w-full overflow-x-auto rounded-xl border border-white/[0.06] bg-white/[0.03] p-1 backdrop-blur-md sm:w-fit">
+            <div class="flex min-w-max items-center gap-1">
             <button wire:click="switchTab('memories')"
                     class="px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 {{ $activeTab === 'memories' ? 'bg-[#06b6d4]/20 text-[#06b6d4] border border-[#06b6d4]/30' : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04] border border-transparent' }}">
                 @svg('heroicon-o-circle-stack', 'w-3.5 h-3.5 inline mr-1.5')
@@ -56,12 +50,13 @@
                     <span class="ml-1.5 px-1.5 py-0.5 rounded-full bg-[#30d158]/20 text-[10px] font-semibold text-[#30d158]">{{ $this->getPromotedCount() }}</span>
                 @endif
             </button>
+            </div>
         </div>
 
         {{-- ── Memories Tab ────────────────────────────────────────────────── --}}
         @if($activeTab === 'memories')
             {{-- Search & Filter Bar --}}
-            <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex flex-col gap-3 md:flex-row">
                 <div class="flex-1 relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         @svg('heroicon-o-magnifying-glass', 'w-4 h-4 text-white/30')
@@ -71,7 +66,7 @@
                            class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-xs text-white/80 placeholder-white/30 focus:border-[#06b6d4]/40 focus:ring-1 focus:ring-[#06b6d4]/20 focus:outline-none transition-all backdrop-blur-md" />
                 </div>
                 <select wire:model.live="categoryFilter"
-                        class="px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-xs text-white/60 focus:border-[#06b6d4]/40 focus:ring-1 focus:ring-[#06b6d4]/20 focus:outline-none transition-all backdrop-blur-md appearance-none cursor-pointer">
+                        class="w-full px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-xs text-white/60 focus:border-[#06b6d4]/40 focus:ring-1 focus:ring-[#06b6d4]/20 focus:outline-none transition-all backdrop-blur-md appearance-none cursor-pointer md:w-48">
                     <option value="">All Categories</option>
                     <option value="fact">Facts</option>
                     <option value="procedure">Procedures</option>
@@ -93,7 +88,7 @@
                             $confBadge = $this->getConfidenceBadge((float) ($memory['confidence'] ?? 0.5));
                             $catBadge = $this->getCategoryBadge($memory['category'] ?? '');
                         @endphp
-                        <div class="bg-white/[0.03] backdrop-blur-[40px] rounded-xl p-4 border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.10] transition-all duration-200 group">
+                        <div class="bg-white/[0.03] backdrop-blur-[24px] rounded-xl p-4 border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.10] transition-all duration-200 group">
                             <div class="flex items-start gap-3">
                                 <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border {{ $catBadge['color'] }}">
                                     @svg($catBadge['icon'], 'w-4 h-4')
@@ -162,7 +157,7 @@
                 <div class="space-y-2">
                     @foreach($this->getLearningEntries() as $entry)
                         @php $typeBadge = $this->getLogTypeBadge($entry['log_type'] ?? ''); @endphp
-                        <div class="bg-white/[0.03] backdrop-blur-[40px] rounded-xl p-4 border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.10] transition-all duration-200 {{ !empty($entry['promoted']) ? 'border-l-2 border-l-[#30d158]/50' : '' }}">
+                        <div class="bg-white/[0.03] backdrop-blur-[24px] rounded-xl p-4 border border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.10] transition-all duration-200 {{ !empty($entry['promoted']) ? 'border-l-2 border-l-[#30d158]/50' : '' }}">
                             <div class="flex items-start gap-3">
                                 <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border {{ $typeBadge['color'] }}">
                                     @svg($typeBadge['icon'], 'w-4 h-4')

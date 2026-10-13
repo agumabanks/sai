@@ -1,0 +1,18 @@
+name: media_agent
+version: "1.0.0"
+description: Media and content scheduling agent. Analyzes market intel and drafts social media schedules.
+permissions: [shell, network]
+requires_approval: false
+timeout: 120
+tags: [media, content, marketing, intelligence]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action: generate_schedule, analyze_market"
+    required: true
+    enum: [generate_schedule, analyze_market]
+  - name: topic
+    type: string
+    description: "Optional topic or competitor name."
+    required: false

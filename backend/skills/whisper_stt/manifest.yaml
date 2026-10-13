@@ -1,0 +1,28 @@
+name: whisper_stt
+description: "Transcribe audio files or WhatsApp voice notes to text. Supports local files, generic URLs, and WhatsApp media URLs from WhatsJet webhooks. Uses OpenAI Whisper API or local model."
+version: "2.0.0"
+category: "communication"
+tags: ["voice", "whisper", "transcribe", "audio", "speech", "whatsapp", "voice note", "jarvis"]
+parameters:
+  action:
+    type: string
+    description: "Action: transcribe (local file), from_whatsapp_url (WhatsJet media), from_url (any URL)"
+    required: true
+    enum: ["transcribe", "from_whatsapp_url", "from_url"]
+  audio_path:
+    type: string
+    description: "Path to the local audio file (for 'transcribe' action)"
+    required: false
+  media_url:
+    type: string
+    description: "WhatsApp media URL from WhatsJet webhook payload (for 'from_whatsapp_url')"
+    required: false
+  url:
+    type: string
+    description: "Any publicly accessible audio URL (for 'from_url')"
+    required: false
+  model:
+    type: string
+    description: "Whisper model: 'api' for OpenAI API (default), 'local' for on-device whisper"
+    required: false
+    enum: ["api", "local"]

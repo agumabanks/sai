@@ -18,7 +18,7 @@ class User extends Authenticatable implements FilamentUser
     /**
      * Valid roles for RBAC.
      */
-    public const ROLES = ['admin', 'operator', 'viewer'];
+    public const ROLES = ['admin', 'operator', 'viewer', 'seller'];
 
     public function canAccessPanel(Panel $panel): bool
     {
@@ -75,6 +75,11 @@ class User extends Authenticatable implements FilamentUser
     public function isViewer(): bool
     {
         return $this->role === 'viewer';
+    }
+
+    public function isSeller(): bool
+    {
+        return $this->role === 'seller';
     }
 
     /**

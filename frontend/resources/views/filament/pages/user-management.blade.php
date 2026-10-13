@@ -213,6 +213,7 @@
                             <option value="admin" class="bg-[#1c1c1e]">Admin</option>
                             <option value="operator" class="bg-[#1c1c1e]">Operator</option>
                             <option value="viewer" class="bg-[#1c1c1e]">Viewer</option>
+                            <option value="seller" class="bg-[#1c1c1e]">Seller</option>
                         </select>
                     </div>
                 </div>
@@ -254,6 +255,7 @@
                             <option value="admin" class="bg-[#1c1c1e]">Admin</option>
                             <option value="operator" class="bg-[#1c1c1e]">Operator</option>
                             <option value="viewer" class="bg-[#1c1c1e]">Viewer</option>
+                            <option value="seller" class="bg-[#1c1c1e]">Seller</option>
                         </select>
                     </div>
                 </div>

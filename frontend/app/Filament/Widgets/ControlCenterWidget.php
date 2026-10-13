@@ -3,6 +3,8 @@
 namespace App\Filament\Widgets;
 
 use App\Services\SanaaEngineService;
+use App\Support\SanaaSettings;
+use App\Support\SanaaShell;
 use Filament\Widgets\Widget;
 
 class ControlCenterWidget extends Widget
@@ -11,61 +13,91 @@ class ControlCenterWidget extends Widget
 
     protected static bool $isLazy = false;
 
-    public string $currentProvider = 'local';
+    public string $currentProvider = 'groq';
 
-    public function mount()
+    public array $metrics = [];
+
+    public array $controlCenter = [];
+
+    public array $quickLaunch = [];
+
+    public function mount(): void
+    {
+        $this->refreshState();
+    }
+
+    public function refreshState(): void
     {
         $engine = app(SanaaEngineService::class);
         $status = $engine->getStatus();
-        // Fix: API returns channels.active_provider not channels.web.active_provider
-        $this->currentProvider = $status['channels']['active_provider'] ?? 'local';
+        $live = SanaaShell::liveData(SanaaShell::metricsFromStatus($status));
+
+        $this->currentProvider = $status['channels']['active_provider'] ?? 'groq';
+        $this->metrics = $live['metrics'] ?? [];
+        $this->controlCenter = SanaaSettings::controlCenter();
+        $this->quickLaunch = collect(SanaaShell::quickLaunch())->take(4)->values()->all();
     }
 
-    public function switchProvider(string $provider)
+    public function switchProvider(string $provider): void
     {
+        if ($provider !== 'groq') {
+            \Filament\Notifications\Notification::make()
+                ->title('Groq Only')
+                ->body('Sanaa AI is locked to Groq for now.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         $engine = app(SanaaEngineService::class);
-        
+
         if ($engine->setProvider($provider)) {
             $this->currentProvider = $provider;
-            
+            $this->refreshState();
+
             \Filament\Notifications\Notification::make()
-                ->title("Brain Switched")
-                ->body("Intelligence provider switched to " . strtoupper($provider))
+                ->title('Brain Switched')
+                ->body('Intelligence provider switched to '.strtoupper($provider))
                 ->success()
                 ->send();
-                
-            // Refresh the page to update all metrics
-            $this->dispatch('$refresh');
         } else {
             \Filament\Notifications\Notification::make()
-                ->title("Switch Failed")
-                ->body("Could not switch to " . strtoupper($provider) . ". Check logs for details.")
+                ->title('Switch Failed')
+                ->body('Could not switch to '.strtoupper($provider).'. Check logs for details.')
                 ->danger()
                 ->send();
         }
     }
 
-    public function triggerScan()
+    public function triggerScan(): void
     {
-        $engine = app(SanaaEngineService::class);
-        $engine->executeCommand('scan');
+        app(SanaaEngineService::class)->executeCommand('scan');
 
         \Filament\Notifications\Notification::make()
-            ->title("Scan Initiated")
-            ->body("Autonomous security audit running in background.")
+            ->title('Scan Initiated')
+            ->body('Autonomous security audit running in background.')
             ->info()
             ->send();
     }
 
-    public function triggerBriefing()
+    public function triggerBriefing(): void
     {
-        $engine = app(SanaaEngineService::class);
-        $engine->executeCommand('generate briefing');
+        app(SanaaEngineService::class)->executeCommand('generate briefing');
 
         \Filament\Notifications\Notification::make()
-            ->title("Briefing Started")
-            ->body("Intelligence briefing is being generated. Newsletter will be sent to your email.")
+            ->title('Briefing Started')
+            ->body('Intelligence briefing is being generated. Newsletter will be sent to your email.')
             ->info()
             ->send();
+    }
+
+    public function openModule(string $moduleId): void
+    {
+        $module = collect($this->controlCenter['modules'] ?? [])->firstWhere('id', $moduleId);
+
+        if (! empty($module['url'])) {
+            $this->redirect($module['url']);
+        }
     }
 }

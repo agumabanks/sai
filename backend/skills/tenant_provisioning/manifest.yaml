@@ -1,0 +1,50 @@
+name: tenant_provisioning
+version: "1.1.0"
+description: Provision, manage, and monitor Sanaa Finance tenants — clone, configure, deploy, verify, disable, enable
+permissions: [shell, network, filesystem]
+requires_approval: true
+timeout: 300
+tags: [infrastructure, provisioning, tenant, devops]
+handler: handler
+parameters:
+  - name: action
+    type: string
+    description: "Action: provision, status, list, disable, enable"
+    required: true
+    enum: [provision, status, list, disable, enable]
+  - name: domain
+    type: string
+    description: "Tenant domain (e.g. bukuya.sanaa.ug). Required for all actions except list."
+    required: false
+  - name: app_name
+    type: string
+    description: "Short tenant name (e.g. bukuya). Auto-detected from domain if omitted."
+    required: false
+  - name: source
+    type: string
+    description: "Source tenant path to clone from"
+    required: false
+    default: /var/www/finance
+  - name: db_source
+    type: string
+    description: "Source database to clone from"
+    required: false
+    default: finance
+  - name: wipe_tenant_data
+    type: boolean
+    description: "Wipe operational data after cloning (keeps users + config tables)"
+    required: false
+    default: true
+  - name: admin_phone
+    type: string
+    description: "Phone number for the system admin user"
+    required: false
+  - name: admin_password
+    type: string
+    description: "Password for the system admin user"
+    required: false
+  - name: skip_cert
+    type: boolean
+    description: "Skip TLS certificate issuance"
+    required: false
+    default: false

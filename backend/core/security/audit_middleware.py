@@ -84,9 +84,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
         # Try session
         session = request.session if hasattr(request, "session") else {}
         if isinstance(session, dict):
-            user = session.get("user")
-            if user:
-                return user.get("email", user.get("id", "session_user"))
+            email = session.get("email")
+            if email:
+                return email
 
         # Try Authorization header
         auth = request.headers.get("authorization", "")

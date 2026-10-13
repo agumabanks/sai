@@ -240,6 +240,7 @@ async def evaluate_skill_access(
     invocation: str,
     provider: str,
     channel: str,
+    sender_role: str = "",
 ) -> dict:
     """
     Evaluate whether a skill can run.
@@ -259,18 +260,27 @@ async def evaluate_skill_access(
     allowed = True
     reason = ""
 
+    role = str(sender_role or "").strip().lower()
+    admin_actor = role == "admin"
+
     if not enabled:
         allowed = False
         reason = "Skill is disabled by policy"
-    elif invocation == "brain":
+    elif invocation == "brain" and not admin_actor:
         if hidden:
             allowed = False
             reason = "Skill is hidden from the AI brain"
         elif manual_only:
             allowed = False
             reason = "Skill is manual-only and cannot be auto-called by the AI brain"
+    elif invocation == "manual" and hidden and not admin_actor:
+        allowed = False
+        reason = "Skill is hidden"
 
-    if allowed and policy.get("enabled", True) and invocation == "brain":
+    if allowed and admin_actor and invocation in {"brain", "manual"}:
+        allowed = True
+        reason = ""
+    elif allowed and policy.get("enabled", True) and invocation == "brain":
         if policy["mode"] == "allow_all":
             allowed = True
         else:
@@ -681,7 +691,7 @@ async def run_doctor(brain=None, workflow_loader=None) -> dict:
 
     order = await SystemKnowledge.get_pref("brain.auto_provider_order", default=getattr(settings, "brain_auto_provider_order", ""))
     normalized = [p for p in re.split(r"\s*,\s*", str(order or "")) if p]
-    invalid_order = [p for p in normalized if p not in {"groq", "anthropic", "openrouter", "local", "openai"}]
+    invalid_order = [p for p in normalized if p not in {"groq", "anthropic", "openrouter", "local", "openai", "soldier"}]
     add("brain.auto_provider_order", "medium", not invalid_order, "Auto provider order valid" if not invalid_order else f"Invalid providers in auto order: {', '.join(invalid_order)}")
 
     if getattr(settings, "sanaa_clade_enabled", False):

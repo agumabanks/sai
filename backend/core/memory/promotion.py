@@ -198,8 +198,49 @@ class PromotionEngine:
             await eng.dispose()
 
         if promoted_count > 0:
-            # Log the promotion event (best-effort via a separate session)
             sample_content = entries[0]["content"][:200]
+            entries_first = entries[0]
+            entry_source = entries_first.get("source", "unknown")
+            entry_category = entries_first.get("category", "unknown")
+            project_name = f"autolearn_{entry_category}"
+
+            try:
+                bridge_session, bridge_eng = await self._get_session()
+                try:
+                    import json as _json
+                    # Store promoted insight as agent_memory
+                    mem_sql = sa_text("""
+                        INSERT INTO agent_memory
+                            (content, category, source, confidence, metadata,
+                             created_at, updated_at, access_count, verified)
+                        VALUES
+                            (:content, :category, :source, :confidence, :metadata,
+                             :now, :now, 0, true)
+                    """)
+                    await bridge_session.execute(mem_sql, {
+                        "content": f"[Promoted] {sample_content} — recurring pattern detected ({promoted_count} occurrences)",
+                        "category": f"promoted_{entry_category}",
+                        "source": "promotion_engine",
+                        "confidence": round(min(1.0, 0.5 + promoted_count * 0.1), 2),
+                        "metadata": _json.dumps({
+                            "type": "promoted_insight",
+                            "source_type": "learning_logs",
+                            "entry_source": entry_source,
+                            "entry_category": entry_category,
+                            "occurrence_count": promoted_count,
+                            "group_size": len(entries),
+                            "threshold": self.threshold,
+                            "promoted_at": now.isoformat(),
+                        }),
+                        "now": now,
+                    })
+                    await bridge_session.commit()
+                finally:
+                    await bridge_session.close()
+                    await bridge_eng.dispose()
+            except Exception as e:
+                logger.warning(f"Failed to bridge promoted insight to memory: {e}")
+
             try:
                 audit_session, audit_eng = await self._get_session()
                 try:

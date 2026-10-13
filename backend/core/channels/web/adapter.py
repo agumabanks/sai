@@ -50,6 +50,9 @@ class WebChannelAdapter(ChannelAdapter):
             text=text,
             session_id=session_id,
             raw=raw,
+            metadata={
+                "role": raw.get("role", "operator"),
+            },
         )
 
     async def send_response(self, message: InternalMessage, response: str) -> None:

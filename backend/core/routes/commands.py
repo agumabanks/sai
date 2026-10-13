@@ -12,7 +12,7 @@ from typing import Optional
 
 from core.database import Command
 from core.routes import deps
-from core.routes.deps import require_auth
+from core.routes.deps import require_auth, RateLimit
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -31,10 +31,12 @@ async def execute_command(
     request: Request,
     background_tasks: BackgroundTasks,
     user: dict = Depends(require_auth),
+    _rate: None = Depends(RateLimit(limit=30)),
 ):
     """Handle commands from both JSON API and htmx form submissions."""
 
     content_type = request.headers.get("content-type", "")
+    body = {}
 
     if "application/json" in content_type:
         body = await request.json()
@@ -45,6 +47,13 @@ async def execute_command(
 
     if not command_text.strip():
         raise HTTPException(status_code=400, detail="Empty command")
+
+    # Honor provider from JSON body (e.g. Sanaa Chat dropdown) before routing
+    requested_provider = (body.get("provider") or "").strip().lower()
+    if requested_provider and requested_provider in deps.BRAIN_PROVIDERS:
+        deps.brain.switch_provider(requested_provider)
+        from core.database import SystemKnowledge
+        await SystemKnowledge.set_pref("brain.provider", requested_provider, source="api_command")
 
     cmd = await Command.create(text=command_text, context=None, status="processing")
 
@@ -80,10 +89,17 @@ async def execute_command(
             return HTMLResponse(f'<div class="text-green-400 whitespace-pre-wrap">{response_text}</div>')
         return JSONResponse({"id": cmd.id, "status": "completed", "response": response_text})
 
-    # Intercept "run skill <name> [json]"
-    if command_text.lower().startswith("run skill "):
+    # Intercept explicit skill commands: "run skill", "skill", "run <skill>"
+    skill_prefix = None
+    lowered = command_text.lower().strip()
+    for prefix in ("run skill ", "skill "):
+        if lowered.startswith(prefix):
+            skill_prefix = prefix
+            break
+
+    if skill_prefix:
         await deps.brain.ensure_skills_loaded()
-        raw = command_text[len("run skill "):].strip()
+        raw = command_text[len(skill_prefix):].strip()
         skill_name = raw.split(" ", 1)[0].strip()
         args = {}
         if " " in raw:
@@ -97,12 +113,47 @@ async def execute_command(
             name=skill_name, args=args,
             session_id=f"cmd:{cmd.id}", channel="web",
             sender_id=user["email"],
+            execution_mode="manual",
+            sender_role=user.get("role", "operator"),
         )
         response_text = result.get("output") or result.get("error") or json.dumps(result.get("data") or {}, default=str)
         await Command.update_by_id(cmd.id, status="completed" if result.get("success") else "failed")
         if "hx-request" in request.headers:
             return HTMLResponse(f'<div class="text-green-400 whitespace-pre-wrap">{response_text}</div>')
         return JSONResponse({"id": cmd.id, "status": "completed" if result.get("success") else "failed", "result": result, "response": response_text})
+
+    if lowered.startswith("run ") and not lowered.startswith("run workflow ") and not lowered.startswith("run skill "):
+        await deps.brain.ensure_skills_loaded()
+        raw = command_text[4:].strip()
+        skill_name = raw.split(" ", 1)[0].strip()
+        if skill_name and deps.brain.skill_registry.get(skill_name):
+            args = {}
+            if " " in raw:
+                maybe_json = raw.split(" ", 1)[1].strip()
+                if maybe_json.startswith("{"):
+                    try:
+                        args = json.loads(maybe_json)
+                    except Exception:
+                        args = {"action": maybe_json}
+                else:
+                    args = {"action": maybe_json}
+            result = await deps.brain.execute_skill(
+                name=skill_name,
+                args=args,
+                session_id=f"cmd:{cmd.id}",
+                channel="web",
+                sender_id=user["email"],
+                execution_mode="manual",
+                sender_role=user.get("role", "operator"),
+            )
+            response_text = result.get("output") or result.get("error") or json.dumps(result.get("data") or {}, default=str)
+            await Command.update_by_id(cmd.id, status="completed" if result.get("success") else "failed")
+            return JSONResponse({
+                "id": cmd.id,
+                "status": "completed" if result.get("success") else "failed",
+                "result": result,
+                "response": response_text,
+            })
 
     # Intercept "run workflow <name> [json]"
     if command_text.lower().startswith("run workflow "):
@@ -175,10 +226,13 @@ async def execute_command(
     is_async = body.get("async", False) if "application/json" in content_type else False
 
     if is_async:
-        async def _process_command_async(cmd_id: str, command_txt: str, email: str):
+        async def _process_command_async(cmd_id: str, command_txt: str, actor: dict):
             try:
                 msg = await deps.web_channel.receive_message({
-                    "command": command_txt, "email": email, "name": email,
+                    "command": command_txt,
+                    "email": actor.get("email", "web_user"),
+                    "name": actor.get("name", actor.get("email", "web_user")),
+                    "role": actor.get("role", "operator"),
                 })
                 if not msg:
                     await Command.update_by_id(cmd_id, status="failed", response="Invalid command")
@@ -189,14 +243,15 @@ async def execute_command(
                 logger.error(f"Async command {cmd_id} failed: {e}", exc_info=True)
                 await Command.update_by_id(cmd_id, status="failed", response=f"Error: {str(e)}")
 
-        background_tasks.add_task(_process_command_async, cmd.id, command_text, user["email"])
+        background_tasks.add_task(_process_command_async, cmd.id, command_text, user)
         return JSONResponse({"id": cmd.id, "status": "processing"})
 
     # Synchronous mode
     msg = await deps.web_channel.receive_message({
         "command": command_text,
         "email": user["email"],
-        "name": user["email"],
+        "name": user.get("name", user["email"]),
+        "role": user.get("role", "operator"),
     })
     if not msg:
         raise HTTPException(status_code=400, detail="Invalid command")
@@ -229,7 +284,7 @@ async def get_command_status(cmd_id: str, user: dict = Depends(require_auth)):
 
 
 @router.post("/api/command/{cmd_id}/approve")
-async def approve_command(cmd_id: str, request: Request, background_tasks: BackgroundTasks, user: dict = Depends(require_auth)):
+async def approve_command(cmd_id: str, request: Request, background_tasks: BackgroundTasks, user: dict = Depends(require_auth), _rate: None = Depends(RateLimit(limit=30))):
     cmd = await Command.get(cmd_id)
     if not cmd:
         raise HTTPException(404, "Command not found")

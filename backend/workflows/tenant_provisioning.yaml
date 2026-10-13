@@ -1,0 +1,95 @@
+name: tenant_provisioning
+version: "1.0.0"
+description: End-to-end Sanaa Finance tenant provisioning — clone, configure, deploy, verify
+
+args:
+  domain:
+    type: string
+    description: Tenant domain (e.g. bukuya.sanaa.ug)
+  app_name:
+    type: string
+    description: Short tenant name (optional, extracted from domain)
+    required: false
+  source:
+    type: string
+    description: Source tenant path to clone from
+    default: /var/www/finance
+  db_source:
+    type: string
+    description: Source database to clone
+    default: finance
+  wipe_tenant_data:
+    type: boolean
+    description: Wipe operational data after clone
+    default: true
+  admin_phone:
+    type: string
+    description: Admin phone number
+    required: false
+  admin_password:
+    type: string
+    description: Admin password
+    required: false
+
+steps:
+  - id: pre_check
+    action: skill
+    description: Verify server health before provisioning
+    params:
+      skill: server_health
+      args:
+        metric: all
+
+  - id: approve_provision
+    action: notify
+    description: Confirm tenant details before proceeding
+    approval: true
+    params:
+      channel: web
+      message: |
+        Ready to provision new tenant:
+          Domain: {{ args.domain }}
+          Source: {{ args.source }}
+          DB Source: {{ args.db_source }}
+          Wipe Data: {{ args.wipe_tenant_data }}
+        Server health: {{ steps.pre_check.output }}
+        Approve to proceed.
+    depends_on: [pre_check]
+
+  - id: provision
+    action: skill
+    description: Run the full tenant provisioning
+    params:
+      skill: tenant_provisioning
+      args:
+        action: provision
+        domain: "{{ args.domain }}"
+        app_name: "{{ args.app_name }}"
+        source: "{{ args.source }}"
+        db_source: "{{ args.db_source }}"
+        wipe_tenant_data: "{{ args.wipe_tenant_data }}"
+        admin_phone: "{{ args.admin_phone }}"
+        admin_password: "{{ args.admin_password }}"
+    timeout: 300
+    depends_on: [approve_provision]
+
+  - id: verify
+    action: skill
+    description: Verify the new tenant is live
+    params:
+      skill: tenant_provisioning
+      args:
+        action: status
+        domain: "{{ args.domain }}"
+    depends_on: [provision]
+
+  - id: report
+    action: notify
+    description: Send provisioning result
+    params:
+      channel: web
+      message: |
+        Tenant provisioning complete for {{ args.domain }}.
+        Result: {{ steps.provision.output }}
+        Verification: {{ steps.verify.output }}
+    depends_on: [verify]

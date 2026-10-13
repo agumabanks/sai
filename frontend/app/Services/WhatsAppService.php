@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 class WhatsAppService
 {
     protected string $baseUrl;
+
     protected string $apiKey;
 
     public function __construct()
@@ -25,9 +26,11 @@ class WhatsAppService
             $response = Http::withToken($this->apiKey)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/whatsapp/status");
+
             return $response->json() ?? ['healthy' => false];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Status Error: " . $e->getMessage());
+            Log::error('WhatsApp Status Error: '.$e->getMessage());
+
             return ['healthy' => false, 'error' => $e->getMessage()];
         }
     }
@@ -44,9 +47,11 @@ class WhatsAppService
                     'phone' => $phone,
                     'message' => $message,
                 ]);
+
             return $response->json() ?? ['error' => 'No response'];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Send Error: " . $e->getMessage());
+            Log::error('WhatsApp Send Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -65,9 +70,11 @@ class WhatsAppService
                     'type' => $type,
                     'caption' => $caption,
                 ]);
+
             return $response->json() ?? ['error' => 'No response'];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Media Error: " . $e->getMessage());
+            Log::error('WhatsApp Media Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -86,9 +93,11 @@ class WhatsAppService
                     'language_code' => $languageCode,
                     'components' => $components,
                 ]);
+
             return $response->json() ?? ['error' => 'No response'];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Template Error: " . $e->getMessage());
+            Log::error('WhatsApp Template Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -105,9 +114,11 @@ class WhatsAppService
                     'page' => $page,
                     'limit' => $limit,
                 ]);
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Contacts Error: " . $e->getMessage());
+            Log::error('WhatsApp Contacts Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -121,9 +132,11 @@ class WhatsAppService
             $response = Http::withToken($this->apiKey)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/whatsapp/contacts/{$phone}");
+
             return $response->json() ?? [];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Contact Error: " . $e->getMessage());
+            Log::error('WhatsApp Contact Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }
@@ -141,9 +154,11 @@ class WhatsAppService
                     'name' => $name,
                     'groups' => $groups,
                 ]);
+
             return $response->json() ?? ['error' => 'No response'];
         } catch (\Exception $e) {
-            Log::error("WhatsApp Create Contact Error: " . $e->getMessage());
+            Log::error('WhatsApp Create Contact Error: '.$e->getMessage());
+
             return ['error' => $e->getMessage()];
         }
     }

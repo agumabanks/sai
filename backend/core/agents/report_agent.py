@@ -1,25 +1,35 @@
 """Report Agent — Generates and sends email reports"""
 
-import os
+import asyncio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from core.brain import get_shared_brain
 from core.config import get_settings
+from core.alerts.email_guard import reserve_alert_email
 
 class ReportAgent:
     def __init__(self, brain=None):
         self.brain = brain or get_shared_brain()
-        self.smtp_host = os.getenv("SMTP_HOST")
-        self.smtp_port = int(os.getenv("SMTP_PORT", 587))
-        self.smtp_user = os.getenv("SMTP_USER")
-        self.smtp_pass = os.getenv("SMTP_PASS")
-        self.from_addr = os.getenv("SMTP_FROM")
-        self.recipients = os.getenv("ALERT_RECIPIENTS", "").split(",")
+        cfg = get_settings()
+        self.smtp_host = cfg.smtp_host
+        self.smtp_port = cfg.smtp_port
+        self.smtp_user = cfg.smtp_user
+        self.smtp_pass = cfg.smtp_pass
+        self.from_addr = cfg.smtp_from
+        self.recipients = cfg.alert_recipient_list
 
-    async def send_alert_email(self, subject: str, body: str):
-        """Send an alert email immediately"""
+    async def send_alert_email(
+        self,
+        subject: str,
+        body: str,
+        *,
+        rate_limit: bool = True,
+        cooldown_seconds=None,
+        category: str = "alert",
+    ):
+        """Send an alert email, respecting the shared alert cooldown."""
         from core.database import SystemKnowledge
         is_enabled = await SystemKnowledge.get_pref("alert.enabled", True)
 
@@ -35,6 +45,20 @@ class ReportAgent:
         if not self.smtp_host:
             print("Alert email skipped: SMTP_HOST is not configured.")
             return False
+
+        if not self.recipients:
+            print("Alert email skipped: ALERT_RECIPIENTS is not configured.")
+            return False
+
+        if rate_limit:
+            allowed, reason = await reserve_alert_email(
+                subject,
+                category=category,
+                cooldown_seconds=cooldown_seconds,
+            )
+            if not allowed:
+                print(f"Alert email skipped: {reason}. Subject: {subject}")
+                return False
             
         try:
             msg = MIMEMultipart("alternative")
@@ -65,12 +89,14 @@ class ReportAgent:
             msg.attach(MIMEText(body, "plain"))
             msg.attach(MIMEText(html_body, "html"))
 
-            # Simple synchronous SMTP for now, could be async with aiosmtplib if needed
-            # Blueprint used smtplib
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_pass)
-                server.sendmail(self.from_addr, self.recipients, msg.as_string())
+            # Run blocking SMTP in a worker thread so the async event loop stays free.
+            def _send_sync():
+                with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                    server.starttls()
+                    server.login(self.smtp_user, self.smtp_pass)
+                    server.sendmail(self.from_addr, self.recipients, msg.as_string())
+
+            await asyncio.to_thread(_send_sync)
 
             return True
         except Exception as e:
@@ -102,5 +128,6 @@ class ReportAgent:
 
         await self.send_alert_email(
             subject=f"[Sanaa AI] Daily Report — {datetime.now().strftime('%b %d, %Y')}",
-            body=report
+            body=report,
+            rate_limit=False,
         )

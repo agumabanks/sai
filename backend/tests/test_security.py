@@ -681,8 +681,8 @@ class TestNoShellTrueInCriticalPaths:
         source = inspect.getsource(Brain.execute_plan)
         assert "create_subprocess_shell" not in source, \
             "Brain.execute_plan() should not use create_subprocess_shell"
-        assert "create_subprocess_exec" in source, \
-            "Brain.execute_plan() should use create_subprocess_exec"
+        assert "ExecutionSandbox" in source or "create_subprocess_exec" in source, \
+            "Brain.execute_plan() should run commands through ExecutionSandbox or create_subprocess_exec"
 
     def test_workflow_runtime_no_shell_true(self):
         """Verify workflow runtime _run_shell_step() uses create_subprocess_exec."""

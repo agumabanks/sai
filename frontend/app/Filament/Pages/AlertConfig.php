@@ -8,13 +8,19 @@ use Filament\Pages\Page;
 
 class AlertConfig extends Page
 {
-    protected static ?string $navigationIcon    = 'heroicon-o-bell-alert';
-    protected static ?string $navigationGroup   = 'System';
-    protected static ?int    $navigationSort    = 25;
-    protected static string  $view              = 'filament.pages.alert-config';
-    protected static ?string $title             = 'Alert Configuration';
-    protected static ?string $navigationLabel   = 'Alert Config';
-    protected static ?string $slug              = 'alert-config';
+    protected static ?string $navigationIcon = 'heroicon-o-bell-alert';
+
+    protected static ?string $navigationGroup = 'System';
+
+    protected static ?int $navigationSort = 25;
+
+    protected static string $view = 'filament.pages.alert-config';
+
+    protected static ?string $title = 'Alert Configuration';
+
+    protected static ?string $navigationLabel = 'Alert Config';
+
+    protected static ?string $slug = 'alert-config';
 
     // ── Page state ────────────────────────────────────────────────────────
 
@@ -30,15 +36,24 @@ class AlertConfig extends Page
     // ── Form fields ───────────────────────────────────────────────────────
 
     public string $formName = '';
+
     public string $formCondition = '';
+
     public string $formThreshold = '';
+
     public string $formSeverity = 'medium';
+
     public string $formRecipients = '';
+
     public string $formEscalationPolicy = '';
+
     public string $formQuietHoursStart = '';
+
     public string $formQuietHoursEnd = '';
+
     public string $formQuietHoursTimezone = 'Africa/Nairobi';
-    public bool   $formEnabled = true;
+
+    public bool $formEnabled = true;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -55,7 +70,7 @@ class AlertConfig extends Page
         $this->rules = $engine->getAlertRules();
 
         // Ensure it's a list, not an error response
-        if (!is_array($this->rules) || (isset($this->rules['error']))) {
+        if (! is_array($this->rules) || (isset($this->rules['error']))) {
             $this->rules = [];
         }
     }
@@ -73,8 +88,9 @@ class AlertConfig extends Page
     {
         $rule = collect($this->rules)->firstWhere('id', $id);
 
-        if (!$rule) {
+        if (! $rule) {
             Notification::make()->title('Rule not found')->danger()->send();
+
             return;
         }
 
@@ -89,7 +105,7 @@ class AlertConfig extends Page
         $this->formEnabled = $rule['enabled'] ?? true;
 
         // Escalation policy (JSON)
-        $this->formEscalationPolicy = !empty($rule['escalation_policy'])
+        $this->formEscalationPolicy = ! empty($rule['escalation_policy'])
             ? json_encode($rule['escalation_policy'], JSON_PRETTY_PRINT)
             : '';
 
@@ -115,7 +131,7 @@ class AlertConfig extends Page
         // Parse recipients from comma-separated string
         $recipients = array_values(array_filter(
             array_map('trim', explode(',', $this->formRecipients)),
-            fn(string $r): bool => $r !== ''
+            fn (string $r): bool => $r !== ''
         ));
 
         // Build quiet hours if provided
@@ -162,6 +178,7 @@ class AlertConfig extends Page
                 ->body($result['error'])
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -185,6 +202,7 @@ class AlertConfig extends Page
                 ->body($result['error'])
                 ->danger()
                 ->send();
+
             return;
         }
 
@@ -232,10 +250,10 @@ class AlertConfig extends Page
     {
         return match (strtolower($severity)) {
             'critical' => 'text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20',
-            'high'     => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
-            'medium'   => 'text-[#ffd60a] bg-[#ffd60a]/10 border-[#ffd60a]/20',
-            'low'      => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
-            default    => 'text-white/40 bg-white/5 border-white/10',
+            'high' => 'text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20',
+            'medium' => 'text-[#ffd60a] bg-[#ffd60a]/10 border-[#ffd60a]/20',
+            'low' => 'text-[#30d158] bg-[#30d158]/10 border-[#30d158]/20',
+            default => 'text-white/40 bg-white/5 border-white/10',
         };
     }
 
@@ -244,11 +262,12 @@ class AlertConfig extends Page
      */
     public function formatTimestamp(?string $timestamp): string
     {
-        if (!$timestamp) {
+        if (! $timestamp) {
             return '—';
         }
         try {
             $dt = new \DateTime($timestamp);
+
             return $dt->format('M j, Y H:i');
         } catch (\Exception $e) {
             return $timestamp;
@@ -268,6 +287,6 @@ class AlertConfig extends Page
      */
     public function getEnabledCount(): int
     {
-        return count(array_filter($this->rules, fn(array $r): bool => ($r['enabled'] ?? false)));
+        return count(array_filter($this->rules, fn (array $r): bool => ($r['enabled'] ?? false)));
     }
 }
